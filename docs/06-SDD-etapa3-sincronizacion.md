@@ -6,6 +6,7 @@
 | **Proyecto** | `onplay-core` |
 | **Etapa** | 3 de 6 |
 | **Versión** | 1.1 |
+| **Estado** | Vinculante. **Fase 0 aplicada con defaults el 2026-09-03** (se construye en local; claves de escritura, apertura del candado `SYNC_SOLO_LECTURA`, respaldo restaurado y staging quedan como precondiciones del dueño para encender el push en producción; conteo de ofertas: onplay.cl 0, onplaygames.cl 87). **Fase 1 (cimientos) y Fase 2 (E3c ingesta) implementadas y verificadas por curl el 2026-09-03** contra onplaygames.cl real (criterios 1, 7, 10, 12, 13 y §8.3). Decisiones de implementación en `08` R-016 y R-017. Fases 3–6 pendientes |
 | **Fecha** | 25 de agosto de 2026 |
 | **Documento padre** | `docs/01-SDD-general.md` |
 | **Precedentes** | `docs/02-SDD-etapa1-mostrador.md` · Etapa 2 (Inventario) |

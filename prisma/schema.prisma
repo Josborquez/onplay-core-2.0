@@ -107,9 +107,23 @@ model Canal {
   urlBase String?
   activo  Boolean @default(true)
 
-  productos ProductoCanal[]
-  ventas    Venta[]
-  clientes  ClienteCanal[] // E4 §5.3
+  // E3 §5.3 — interruptores independientes (G8). Se encienden de a uno, en orden:
+  // ingesta → precio → stock. pushStock exige ingestaPedidos (422 INGESTA_REQUERIDA).
+  ingestaPedidos Boolean @default(false)
+  pushPrecio     Boolean @default(false)
+  pushStock      Boolean @default(false)
+
+  // Marcas de agua: avanzan SOLO al terminar una corrida real con éxito.
+  ultimaIngestaEn    DateTime?
+  ultimoPushPrecioEn DateTime?
+  ultimoPushStockEn  DateTime?
+
+  productos     ProductoCanal[]
+  ventas        Venta[]
+  clientes      ClienteCanal[] // E4 §5.3
+  pedidos       PedidoCanal[] // E3
+  discrepancias Discrepancia[] // E3
+  corridas      SyncCorrida[] // E3
 }
 
 model Categoria {
@@ -147,6 +161,7 @@ model Producto {
   movimientosStock MovimientoStock[] // E2
   stock            StockActual[] // E2
   recuentoLineas   RecuentoLinea[] // E2
+  lineasPedido     PedidoCanalLinea[] // E3
 
   @@index([tipo, activo])
   @@index([codigoBarras])
@@ -173,10 +188,23 @@ model ProductoCanal {
   manejaStockCanal Boolean?
   stockCanalEn     DateTime?
 
+  // E3 §5.1 — referencia del bloqueo optimista de §4.1: lo que ESTE sistema escribió por
+  // última vez en el canal. `hashUltimoSync` NO participa del push (queda para el pull de E1).
+  precioPublicado Int?
+  stockPublicado  Int?
+  publicadoEn     DateTime?
+  syncPrecio      EstadoSync @default(pendiente)
+  syncStock       EstadoSync @default(pendiente)
+  syncMensaje     String?    @db.Text
+
+  discrepancias Discrepancia[] // E3
+
   @@unique([canalId, externoId])
   @@unique([canalId, externoSku])
   @@unique([productoId, canalId])
   @@index([productoId])
+  @@index([canalId, syncStock])
+  @@index([canalId, syncPrecio])
 }
 
 model Usuario {
@@ -188,15 +216,17 @@ model Usuario {
   activo       Boolean    @default(true)
   creadoEn     DateTime   @default(now())
 
-  turnos              TurnoCaja[]
-  ventas              Venta[]              @relation("VentasRegistradas")
-  ventasAnuladas      Venta[]              @relation("VentasAnuladas")
-  auditorias          Auditoria[]
-  movimientosMonedero MovimientoMonedero[] // E4 §5.3
-  movimientosStock    MovimientoStock[] // E2
-  recuentos           Recuento[] // E2
-  devoluciones        Devolucion[] // E2
-  movimientosCaja     MovimientoCaja[] // E2
+  turnos                 TurnoCaja[]
+  ventas                 Venta[]              @relation("VentasRegistradas")
+  ventasAnuladas         Venta[]              @relation("VentasAnuladas")
+  auditorias             Auditoria[]
+  movimientosMonedero    MovimientoMonedero[] // E4 §5.3
+  movimientosStock       MovimientoStock[] // E2
+  recuentos              Recuento[] // E2
+  devoluciones           Devolucion[] // E2
+  movimientosCaja        MovimientoCaja[] // E2
+  discrepanciasResueltas Discrepancia[]       @relation("DiscrepanciasResueltas") // E3
+  corridas               SyncCorrida[] // E3
 }
 
 model TurnoCaja {
@@ -345,7 +375,7 @@ model Cliente {
   canales     ClienteCanal[]
   movimientos MovimientoMonedero[]
   ventas      Venta[]
-  // pedidos PedidoCanal[] — solo si E3 existe (§7.2); E3 no existe aún
+  pedidos     PedidoCanal[] // E3 §5.2 (E4 §7.2)
 
   @@index([nombreBusqueda])
   @@index([telefono])
@@ -519,4 +549,169 @@ model MovimientoCaja {
   creadoEn    DateTime           @default(now())
 
   @@index([turnoCajaId])
+}
+
+// ─── Etapa 3: sincronización bidireccional (docs/06-SDD §5) ─────────────────────
+
+enum EstadoSync {
+  pendiente
+  al_dia
+  por_publicar
+  detenido
+  error
+}
+
+enum TipoDiscrepancia {
+  stock_derivado
+  precio_derivado
+  precio_en_oferta
+  primera_publicacion
+  producto_sin_mapear
+  producto_desaparecido
+  pedido_anulado
+  pedido_sin_stock // §8.4 — al FINAL del enum
+}
+
+enum EstadoDiscrepancia {
+  abierta
+  resuelta
+  descartada
+}
+
+enum TipoCorrida {
+  pedidos
+  precios
+  stock
+  adopcion
+}
+
+enum EstadoCorrida {
+  en_curso
+  terminada
+  abortada
+}
+
+model Discrepancia {
+  id                 String            @id @default(cuid())
+  canalId            String
+  canal              Canal             @relation(fields: [canalId], references: [id])
+  productoCanalId    String?
+  productoCanal      ProductoCanal?    @relation(fields: [productoCanalId], references: [id])
+  pedidoCanalId      String?
+  pedidoCanal        PedidoCanal?      @relation(fields: [pedidoCanalId], references: [id])
+  pedidoCanalLineaId String?
+  pedidoCanalLinea   PedidoCanalLinea? @relation(fields: [pedidoCanalLineaId], references: [id])
+
+  tipo   TipoDiscrepancia
+  estado EstadoDiscrepancia @default(abierta)
+
+  valorMaestro   Int?
+  valorCanal     Int?
+  valorPublicado Int?
+  vecesVista     Int      @default(1)
+  vistaEn        DateTime @default(now())
+  detalle        String?  @db.Text
+
+  // Una sola discrepancia ABIERTA por sujeto y tipo (§5.2): las corridas siguientes
+  // actualizan la existente. La spec propone @@unique([productoCanalId, tipo, estado]),
+  // pero eso impediría dos RESUELTAS del mismo tipo; se garantiza con esta clave, que
+  // vale "<sujeto>:<tipo>" mientras está abierta y null al resolverla/descartarla.
+  claveAbierta String? @unique
+
+  creadaEn      DateTime  @default(now())
+  resueltaEn    DateTime?
+  resueltaPorId String?
+  resueltaPor   Usuario?  @relation("DiscrepanciasResueltas", fields: [resueltaPorId], references: [id])
+  accionTomada  String?
+
+  @@index([canalId, estado, tipo])
+  @@index([productoCanalId, tipo])
+  @@index([creadaEn])
+}
+
+model SyncCorrida {
+  id          String        @id @default(cuid())
+  canalId     String
+  canal       Canal         @relation(fields: [canalId], references: [id])
+  tipo        TipoCorrida
+  estado      EstadoCorrida @default(en_curso)
+  simulacion  Boolean       @default(true)
+  iniciadaEn  DateTime      @default(now())
+  terminadaEn DateTime?
+
+  leidos    Int     @default(0)
+  aEscribir Int     @default(0) // cuántos se escribirían (o escribieron)
+  escritos  Int     @default(0)
+  omitidos  Int     @default(0)
+  detenidos Int     @default(0)
+  fallidos  Int     @default(0)
+  mensaje   String? @db.Text // motivo de una corrida abortada u omitida
+
+  usuarioId String? // null = corrida automática
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  items SyncCorridaItem[]
+
+  @@index([canalId, tipo, iniciadaEn])
+  @@index([canalId, tipo, estado])
+}
+
+// Una fila por ítem no trivial (escrito, detenido, fallido). Los omitidos solo se
+// cuentan. Purga a 90 días (Fase 6).
+model SyncCorridaItem {
+  id           String      @id @default(cuid())
+  corridaId    String
+  corrida      SyncCorrida @relation(fields: [corridaId], references: [id], onDelete: Cascade)
+  sku          String
+  accion       String // "escribir" | "detener" | "fallar"
+  valorAntes   Int?
+  valorDespues Int?
+  mensaje      String?     @db.Text
+
+  @@index([corridaId])
+}
+
+model PedidoCanal {
+  id                String    @id @default(cuid())
+  canalId           String
+  canal             Canal     @relation(fields: [canalId], references: [id])
+  externoId         Int
+  numero            String
+  estadoCanal       String
+  total             Int
+  montoReembolsado  Int       @default(0)
+  clienteEmail      String?
+  clienteExternoId  Int? // customer_id de Woo; 0 o null = invitado
+  clienteId         String? // resuelto vía ClienteCanal (E4)
+  cliente           Cliente?  @relation(fields: [clienteId], references: [id])
+  creadoEnCanal     DateTime
+  modificadoEnCanal DateTime? // date_modified_gmt: para saber si cambió desde revisadoEn
+  ingeridoEn        DateTime?
+  revisadoEn        DateTime? // última vez que se releyó para detectar cambios
+
+  lineas        PedidoCanalLinea[]
+  discrepancias Discrepancia[]
+
+  @@unique([canalId, externoId])
+  @@index([canalId, ingeridoEn])
+  @@index([clienteId])
+}
+
+model PedidoCanalLinea {
+  id               String      @id @default(cuid())
+  pedidoId         String
+  pedido           PedidoCanal @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  externoItemId    Int
+  externoSku       String?
+  descripcion      String
+  cantidad         Int
+  cantidadDevuelta Int         @default(0)
+  precioUnitario   Int
+  productoId       String?
+  producto         Producto?   @relation(fields: [productoId], references: [id])
+
+  discrepancias Discrepancia[]
+
+  @@unique([pedidoId, externoItemId])
+  @@index([pedidoId])
 }

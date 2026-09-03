@@ -62,3 +62,20 @@ export {
   type LineaDevolucionCalculada,
   type CalculoDevolucion,
 } from './devolucion.js';
+// E3 — docs/06-SDD-etapa3-sincronizacion.md §4 y §8
+export {
+  decidirPushStock,
+  decidirPushPrecio,
+  explicarDeriva,
+  pedidoPagado,
+  pedidoAnulado,
+  devueltasPorLinea,
+  montoDesdeWoo,
+  ESTADOS_PAGADOS,
+  ESTADOS_ANULADOS,
+  type AccionPush,
+  type DecisionStock,
+  type DecisionPrecio,
+  type EntradaDecisionStock,
+  type EntradaDecisionPrecio,
+} from './sync.js';

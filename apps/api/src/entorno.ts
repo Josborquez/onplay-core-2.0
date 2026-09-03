@@ -18,6 +18,16 @@ export const entorno = {
   // §11: apagar el cron sin tocar código, y ajustar la frecuencia si hiciera falta.
   syncHabilitado: (process.env.SYNC_HABILITADO ?? 'true') !== 'false',
   syncCron: process.env.SYNC_CRON ?? '*/30 * * * *',
+  // E3 §11 — la unidad programada es la corrida completa (pedidos → precios → stock).
+  syncCronCompleta: process.env.SYNC_CRON_COMPLETA ?? '*/15 * * * *',
+  syncLote: Number(process.env.SYNC_LOTE ?? 50),
+  syncConcurrencia: Number(process.env.SYNC_CONCURRENCIA ?? 4),
+  // De dónde descuenta una venta online (§8.2). Código de Ubicacion.
+  syncUbicacionOnline: process.env.SYNC_UBICACION_ONLINE ?? 'bodega',
+  // Antigüedad máxima de la ingesta para permitir el push de stock (§4.2).
+  syncVentanaIngestaMin: Number(process.env.SYNC_VENTANA_INGESTA_MIN ?? 20),
+  alertaDiscrepancias: Number(process.env.ALERTA_DISCREPANCIAS ?? 25),
+  alertaCorreo: process.env.ALERTA_CORREO ?? '',
   canales: {
     onplay_cl: {
       url: process.env.WOO_ONPLAY_URL ?? '',

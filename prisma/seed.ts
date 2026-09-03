@@ -84,6 +84,20 @@ async function main() {
     });
   }
 
+  // E3 §8.2 — las corridas automáticas (cron) firman sus movimientos de stock con este
+  // usuario. Inactivo: no puede iniciar sesión (auth exige activo) y su hash no es válido.
+  await prisma.usuario.upsert({
+    where: { email: 'sistema@onplay.cl' },
+    update: { nombre: 'Sistema (sync)', activo: false },
+    create: {
+      email: 'sistema@onplay.cl',
+      nombre: 'Sistema (sync)',
+      passwordHash: 'sin-clave',
+      rol: 'vendedor',
+      activo: false,
+    },
+  });
+
   const anioActual = new Date().getUTCFullYear();
   await prisma.correlativo.upsert({
     where: { clave: 'venta' },

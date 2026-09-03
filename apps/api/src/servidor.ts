@@ -15,6 +15,8 @@ import rutasStock from './rutas/stock.js';
 import rutasRecuentos from './rutas/recuentos.js';
 import rutasDevoluciones from './rutas/devoluciones.js';
 import rutasSync from './rutas/sync.js';
+import rutasSincronizacion from './rutas/sincronizacion.js';
+import rutasCanales from './rutas/canales.js';
 import rutasTurnos from './rutas/turnos.js';
 import rutasVentas from './rutas/ventas.js';
 import { entorno } from './entorno.js';
@@ -38,6 +40,8 @@ export async function construirServidor() {
   await app.register(rutasSalud);
   await app.register(rutasAuth, { prefix: '/api/v1' });
   await app.register(rutasSync, { prefix: '/api/v1' });
+  await app.register(rutasSincronizacion, { prefix: '/api/v1' }); // E3 §6.1–6.2
+  await app.register(rutasCanales, { prefix: '/api/v1' }); // E3 §6.3
   await app.register(rutasProductos, { prefix: '/api/v1' });
   await app.register(rutasStock, { prefix: '/api/v1' }); // E2 §7.1
   await app.register(rutasRecuentos, { prefix: '/api/v1' }); // E2 §7.2

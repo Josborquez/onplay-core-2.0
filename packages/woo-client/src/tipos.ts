@@ -30,6 +30,9 @@ export interface ProductoWoo {
   status: string;
   price: string;
   regular_price: string;
+  sale_price?: string; // E3 §4.3: con oferta activa NO se toca el precio
+  on_sale?: boolean;
+  date_modified_gmt?: string;
   images: ImagenWoo[];
   categories: CategoriaDeProductoWoo[];
   meta_data: MetaDatoWoo[];
@@ -60,9 +63,61 @@ export interface VariacionWoo {
   sku: string;
   price: string;
   regular_price: string;
+  sale_price?: string;
+  on_sale?: boolean;
   attributes: AtributoVariacionWoo[];
   image?: ImagenWoo | null;
   manage_stock?: boolean | 'parent';
   stock_quantity?: number | null;
   stock_status?: string;
+}
+
+// ─── Etapa 3 (docs/06-SDD §7 y §8) ─────────────────────────────────────────────
+
+/** Único cuerpo que el maestro escribe en un producto o variación (§7.2: PUT acotado). */
+export interface CambiosProductoWoo {
+  regular_price?: string;
+  stock_quantity?: number;
+}
+
+export interface LineaPedidoWoo {
+  id: number;
+  product_id: number;
+  variation_id: number; // 0 si el producto es simple
+  sku: string;
+  name: string;
+  quantity: number;
+  price: number | string; // unitario neto (Woo lo manda con decimales)
+  subtotal: string;
+  total: string;
+}
+
+export interface ReembolsoResumenWoo {
+  id: number;
+  reason: string;
+  total: string; // negativo
+}
+
+export interface PedidoWoo {
+  id: number;
+  number: string;
+  status: string; // pending | processing | on-hold | completed | cancelled | refunded | failed
+  total: string;
+  currency: string;
+  customer_id: number; // 0 = invitado
+  billing?: { email?: string; first_name?: string; last_name?: string };
+  date_created_gmt: string;
+  date_modified_gmt: string;
+  date_paid_gmt?: string | null;
+  refunds: ReembolsoResumenWoo[];
+  line_items: LineaPedidoWoo[];
+}
+
+/** Detalle de `orders/:id/refunds`: las cantidades por línea vienen NEGATIVAS. */
+export interface ReembolsoWoo {
+  id: number;
+  reason: string;
+  amount: string;
+  date_created_gmt: string;
+  line_items: { id: number; product_id: number; variation_id: number; quantity: number; total: string }[];
 }

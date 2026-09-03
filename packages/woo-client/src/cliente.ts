@@ -1,4 +1,12 @@
-import type { CategoriaWoo, ProductoWoo, UsuarioWoo, VariacionWoo } from './tipos.js';
+import type {
+  CambiosProductoWoo,
+  CategoriaWoo,
+  PedidoWoo,
+  ProductoWoo,
+  ReembolsoWoo,
+  UsuarioWoo,
+  VariacionWoo,
+} from './tipos.js';
 
 export interface ConfigClienteWoo {
   url: string; // p.ej. https://onplaygames.cl
@@ -44,6 +52,7 @@ export class ClienteWoo {
     metodo: 'GET' | 'POST' | 'PUT' | 'DELETE',
     ruta: string,
     query: Record<string, string> = {},
+    cuerpo?: unknown,
   ): Promise<T> {
     if (this.config.soloLectura && metodo !== 'GET') {
       throw new ErrorEscrituraBloqueada(metodo, ruta);
@@ -55,6 +64,8 @@ export class ClienteWoo {
 
     const res = await fetch(url, {
       method: metodo,
+      headers: cuerpo !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
       signal: AbortSignal.timeout(this.config.timeoutMs ?? 30000),
     });
     const texto = await res.text();
@@ -151,4 +162,86 @@ export class ClienteWoo {
       pagina += 1;
     }
   }
+
+  // ─── Etapa 3 (docs/06-SDD §7 y §8) ───────────────────────────────────────────
+
+  /**
+   * Pedidos por estado modificados desde una marca (§8.1). `dates_are_gmt=true`
+   * obligatorio (§6.4). `status` acepta lista separada por coma.
+   */
+  async *paginarPedidos(
+    status: string,
+    modificadosDesdeIsoUtc: string | null,
+    porPagina = 100,
+  ): AsyncGenerator<PedidoWoo[]> {
+    let pagina = 1;
+    for (;;) {
+      const lote = await this.solicitar<PedidoWoo[]>('GET', 'orders', {
+        status,
+        ...(modificadosDesdeIsoUtc ? { modified_after: modificadosDesdeIsoUtc, dates_are_gmt: 'true' } : {}),
+        per_page: String(porPagina),
+        page: String(pagina),
+        orderby: 'id',
+        order: 'asc',
+      });
+      if (lote.length === 0) return;
+      yield lote;
+      if (lote.length < porPagina) return;
+      pagina += 1;
+    }
+  }
+
+  /** Reembolsos de un pedido con cantidades por línea (negativas) — §8.3. */
+  async listarReembolsos(pedidoId: number): Promise<ReembolsoWoo[]> {
+    return this.solicitar<ReembolsoWoo[]>('GET', `orders/${pedidoId}/refunds`, { per_page: '100' });
+  }
+
+  /**
+   * Lectura de S_canal por listado (§7.5): hasta 100 ids por llamada con `include`,
+   * nunca un GET por producto. Las variaciones van por `listarVariaciones(padre)`.
+   */
+  async listarProductosPorIds(ids: number[]): Promise<ProductoWoo[]> {
+    if (ids.length === 0) return [];
+    const todos: ProductoWoo[] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const trozo = ids.slice(i, i + 100);
+      todos.push(
+        ...(await this.solicitar<ProductoWoo[]>('GET', 'products', {
+          include: trozo.join(','),
+          status: 'any',
+          per_page: '100',
+        })),
+      );
+    }
+    return todos;
+  }
+
+  async obtenerProducto(id: number): Promise<ProductoWoo> {
+    return this.solicitar<ProductoWoo>('GET', `products/${id}`);
+  }
+
+  async obtenerVariacion(padreId: number, id: number): Promise<VariacionWoo> {
+    return this.solicitar<VariacionWoo>('GET', `products/${padreId}/variations/${id}`);
+  }
+
+  /**
+   * PUT acotado (§7.2): solo `regular_price` y/o `stock_quantity`. El tipo del
+   * parámetro impide mandar name, categories, images, meta_data o sale_price.
+   * Pasa por el candado SYNC_SOLO_LECTURA como toda escritura.
+   */
+  async actualizarProducto(id: number, cambios: CambiosProductoWoo): Promise<ProductoWoo> {
+    return this.solicitar<ProductoWoo>('PUT', `products/${id}`, {}, acotar(cambios));
+  }
+
+  async actualizarVariacion(padreId: number, id: number, cambios: CambiosProductoWoo): Promise<VariacionWoo> {
+    return this.solicitar<VariacionWoo>('PUT', `products/${padreId}/variations/${id}`, {}, acotar(cambios));
+  }
+}
+
+/** Deja pasar únicamente los dos campos permitidos, aunque el llamador mande más. */
+function acotar(cambios: CambiosProductoWoo): CambiosProductoWoo {
+  const salida: CambiosProductoWoo = {};
+  if (cambios.regular_price !== undefined) salida.regular_price = cambios.regular_price;
+  if (cambios.stock_quantity !== undefined) salida.stock_quantity = cambios.stock_quantity;
+  return salida;
 }

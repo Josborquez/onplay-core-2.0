@@ -31,6 +31,12 @@ export interface EntradaMovimiento {
   referenciaId?: string | null;
   nota?: string | null;
   usuarioId: string;
+  /**
+   * E3 §8.4 (R-016): SOLO la ingesta de un pedido web ya PAGADO puede dejar el libro en
+   * negativo — la unidad ya se vendió en el canal y el maestro debe reflejarlo; la
+   * discrepancia `pedido_sin_stock` la resuelve una persona. Nadie más lo usa.
+   */
+  permitirNegativo?: boolean;
 }
 
 export interface ResultadoMovimiento {
@@ -69,7 +75,7 @@ export async function registrarMovimiento(tx: Tx, e: EntradaMovimiento): Promise
   // R-014 (decisión del dueño 2026-09-02): el stock NUNCA queda negativo. Una salida mayor que
   // lo disponible aborta la transacción entera (venta, merma, ajuste o traslado).
   const r = aplicarMovimiento(actual, e.cantidad);
-  if (r.quedaNegativo) {
+  if (r.quedaNegativo && !(e.permitirNegativo && e.motivo === 'venta_online')) {
     throw new ErrorStock({
       error: 'STOCK_INSUFICIENTE',
       detalle: `Disponible ${actual}, se intenta sacar ${-e.cantidad}`,

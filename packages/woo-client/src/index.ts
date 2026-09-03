@@ -8,4 +8,9 @@ export type {
   UsuarioWoo,
   VariacionWoo,
   AtributoVariacionWoo,
+  CambiosProductoWoo,
+  LineaPedidoWoo,
+  PedidoWoo,
+  ReembolsoResumenWoo,
+  ReembolsoWoo,
 } from './tipos.js';

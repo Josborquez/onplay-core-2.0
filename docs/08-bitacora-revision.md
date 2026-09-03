@@ -31,6 +31,8 @@
 | R-013 | 2026-09-02 | Etapa 2 | Cierre de E2: código completo, queda el recuento real (criterio 18) | Abierto (del dueño) |
 | R-014 | 2026-09-02 | Mostrador / Stock | El stock no puede quedar en −1 ni la venta aceptar más de lo disponible; icono de Clientes | Corregido (cambia D-E2-1 y M2 de 03-SDD) |
 | R-015 | 2026-09-03 | Importador / Sync | Cada corrida completa repetía en `SyncLog` los mismos errores conocidos | Corregido |
+| R-016 | 2026-09-03 | Etapa 3 / Stock | Un pedido web pagado puede dejar el libro en negativo (choca con R-014) | Decidido por defecto — **pendiente de ratificar por el dueño** |
+| R-017 | 2026-09-03 | Etapa 3 | Arranque de E3: Fase 0 con defaults, Fases 1–2 hechas; ajustes menores a la spec 06 | Corregido (amplía 06-SDD §5.2, §8.1, §8.2) |
 
 ---
 
@@ -182,6 +184,29 @@
 - **Decisión:** un error de sync que ya está **abierto** (`resultado='error'`, `resuelto=false`) con el mismo canal y el mismo `detalle` no se vuelve a registrar. Marcarlo resuelto lo deja reaparecer en la próxima corrida si el origen sigue igual, así que la bitácora sigue diciendo la verdad: una fila abierta por problema real. Aplica a la importación completa y al incremental (`registrarErrorSync` en `apps/api/src/sync/importador.ts`). El `resumen.errores` de la respuesta no cambia: sigue contando todo lo que falló en la corrida.
 - **Verificado por curl:** importación real de onplaygames_cl con 11 errores → 0 filas nuevas (21 abiertas antes y después); marcar una resuelta por `PATCH /sync/logs/:id` y reimportar → reaparece exactamente una vez.
 - **Pendiente del dueño (criterio 2):** en dev quedan 10 filas abiertas «viejas» (6 del 2026-09-01 y 4 del 2026-09-02 13:56) cuyo texto ya no coincide con el actual porque R-001/R-003 cambiaron el nombre de las variaciones dentro del detalle; hay que marcarlas resueltas a mano una vez. Las 11 vigentes son datos del origen y se resuelven en Woo o se marcan resueltas con criterio.
+
+### R-016 · Un pedido web pagado puede dejar el libro en negativo (choca con R-014)
+
+- **Fecha:** 2026-09-03. **Estado:** decidido por defecto al construir E3; **pendiente de ratificar por el dueño.**
+- **Contradicción:** R-014 (dueño, 2026-09-02) dice que el stock NUNCA queda negativo y `registrarMovimiento` aborta con `422 STOCK_INSUFICIENTE`. `06-SDD` §8.4 (25-08, también decisión del dueño sobre prioridad entre canales) dice que un pedido online **pagado** es un hecho: «el descuento `venta_online` se hace aunque el stock quede negativo» y se abre `pedido_sin_stock` para que una persona decida (contactar, reembolsar o reponer). Las dos reglas no pueden convivir tal cual.
+- **Decisión tomada:** R-014 sigue valiendo para todo lo que decide una persona en la tienda (venta del mostrador, merma, ajuste, traslado). La **única** excepción es el motivo `venta_online` cuando lo escribe la ingesta de E3 (`permitirNegativo: true` en `EntradaMovimiento`, que solo tiene efecto con ese motivo): el cliente ya pagó en la web y ocultar la unidad vendida sería peor que mostrar un −1 con su discrepancia. El mostrador no cambia: con `stockVenta` 0 no deja agregar y el −1 vive en `bodega` (ubicación online), no en `mostrador`.
+- **Si el dueño prefiere lo contrario** (abortar la ingesta del pedido y abrir la discrepancia sin descontar), el cambio es de una línea en `apps/api/src/sync/pedidos.ts` (quitar `permitirNegativo`) y capturar el `422` como candidata `pedido_sin_stock`.
+- **Archivos:** `stock/libro.ts` (opción), `sync/pedidos.ts` (uso), 06-SDD §8.4.
+
+### R-017 · Arranque de E3: Fase 0 con defaults, Fases 1–2 hechas; ajustes menores a la spec 06
+
+- **Fecha:** 2026-09-03. **Estado:** Corregido (amplía `06-SDD`).
+- **Fase 0 (§9):** E2 entrega `Ubicacion.publicable` (bodega) y `referencia_tipo = 'pedido_canal'` (HE3 cerrado). Conteo real de ofertas activas: onplay.cl 0, onplaygames.cl 87 (universo que E3a no toca). Pedidos pagados de los últimos 30 días: 9 y 6. **Quedan del dueño antes de encender cualquier push:** claves `ck_/cs_` de escritura, `SYNC_SOLO_LECTURA=false` anotado en Auditoria, respaldo restaurado en un entorno de prueba y staging. Mientras tanto `PATCH /canales/:id` responde `422 CANDADO_SOLO_LECTURA` si se intenta encender `pushPrecio`/`pushStock`.
+- **Fase 1:** migración `20260903201100_e3_sincronizacion` (schema consolidado E1+E2+E3+E4), `ClienteWoo` con `paginarPedidos`, `listarReembolsos`, `listarProductosPorIds`, `actualizarProducto/Variacion` (PUT acotado a `regular_price`/`stock_quantity`, con test que prueba que no deja pasar otros campos), reglas puras en `packages/dominio/src/sync.ts` (16 tests), cerrojo de corridas con `FOR UPDATE` sobre `Canal`, barrido de arranque, cron `SYNC_CRON_COMPLETA` (*/15) que solo corre en canales con algún interruptor encendido, usuario semilla `sistema@onplay.cl` (inactivo) que firma los movimientos de las corridas automáticas.
+- **Fase 2 (ingesta):** verificada contra onplaygames.cl real: simulación no persiste nada (criterio 1), 6 pedidos ingeridos con 16 líneas, descuento `venta_online` en `bodega` con `pedido_sin_stock` al quedar en −1, reproceso sin duplicar (criterio 7), dos corridas simultáneas → una 409 (criterio 13), `pedido_anulado` al detectar el paso a `refunded` y `vecesVista` 2 sin fila nueva (criterio 10), `pushStock` sin ingesta → 422 (criterio 12), mapeo manual de una línea descuenta el stock que la ingesta no pudo, resolver `pedido_sin_stock` con `reponer` crea `compra` y audita, vendedor 403.
+- **Ajustes a la spec (decisiones de implementación):**
+  1. **§5.2 `@@unique([productoCanalId, tipo, estado])`** impediría dos discrepancias *resueltas* del mismo tipo. Se reemplaza por `claveAbierta String? @unique` = `"<sujeto>:<tipo>"` mientras está abierta y `null` al cerrarla: misma garantía (una abierta por sujeto y tipo), sin el efecto secundario. El sujeto puede ser producto-canal, pedido o línea.
+  2. **Marca de agua inicial (§8.1):** al encender `ingestaPedidos` por primera vez, `ultimaIngestaEn = ahora`: la ingesta parte desde ese momento y no relee los 369 pedidos históricos de onplaygames.cl. La simulación sin marca mira las últimas 24 h para poder mostrar un plan.
+  3. **Pedido que llega ya con reembolso parcial (§8.2):** la primera ingesta descuenta `cantidad − cantidadDevuelta` y no abre discrepancia (el reembolso ocurrió antes de que el maestro supiera del pedido). Los reembolsos posteriores sí abren `pedido_anulado` acotada a la línea.
+  4. **Pedido anulado que nunca se ingirió** (consulta B lo devuelve): se omite con motivo; no hay nada que revertir.
+  5. **`imponer_maestro`** responde `501 NO_DISPONIBLE_AUN` hasta que exista el push de stock (Fase 4).
+  6. **`GET /sync/pedidos`** (no listado en §6) existe porque V14 lo necesita.
+- **Pendiente:** Fase 3 (push de precio), Fase 4 (push de stock + adopción), Fase 5 (V12/V13/V14), Fase 6.
 
 ---
 
