@@ -117,4 +117,5 @@ export const TITULO_DISCREPANCIA: Record<TipoDiscrepancia, string> = {
   producto_desaparecido: 'El producto ya no existe en el canal',
   pedido_anulado: 'Pedido cancelado o reembolsado después de ingerirlo',
   pedido_sin_stock: 'Pedido pagado sin stock en el maestro',
+  canal_sin_gestion: 'El canal no gestiona stock para este producto',
 };

@@ -10,6 +10,7 @@ import { TITULO_DISCREPANCIA, cerrarDiscrepancia } from '../sync/discrepancias.j
 import { CANALES_WOO, type CanalWoo } from '../sync/importador.js';
 import { ingerirPedidos, mapearLineaPedido } from '../sync/pedidos.js';
 import { correrCompleta } from '../sync/completa.js';
+import { adoptarStock, imponerMaestro, publicarPrecios, publicarStock } from '../sync/push.js';
 
 function responderError(reply: FastifyReply, e: unknown) {
   if (e instanceof ErrorCorrida || e instanceof ErrorStock) return reply.code(e.status).send(e.cuerpo);
@@ -58,6 +59,28 @@ export default async function rutasSincronizacion(app: FastifyInstance) {
       }
     },
   );
+
+  // E3a/E3b: push de precio, push de stock y adopción inicial (§4.4). dryRun por defecto.
+  for (const [ruta, correr] of [
+    ['precios', publicarPrecios],
+    ['stock', publicarStock],
+    ['adoptar', adoptarStock],
+  ] as const) {
+    app.post<{ Params: { canalId: string }; Querystring: { dryRun?: string; productoIds?: string } }>(
+      `/sync/:canalId/${ruta}`,
+      admin,
+      async (req, reply) => {
+        if (!canalValido(req.params.canalId, reply)) return;
+        const dryRun = req.query.dryRun !== 'false';
+        const productoIds = req.query.productoIds ? req.query.productoIds.split(',').filter(Boolean) : undefined;
+        try {
+          return await correr(req.params.canalId, { dryRun, usuarioId: req.user.sub, productoIds });
+        } catch (e) {
+          return responderError(reply, e);
+        }
+      },
+    );
+  }
 
   app.get<{ Querystring: { canalId?: string; tipo?: string; estado?: string; desde?: string; pagina?: string } }>(
     '/sync/corridas',
@@ -242,12 +265,34 @@ export default async function rutasSincronizacion(app: FastifyInstance) {
     const acciones = ['adoptar_canal', 'imponer_maestro', 'descartar', 'contactar_cliente', 'reembolsar', 'reponer'];
     if (!acciones.includes(accion)) return reply.code(422).send({ error: 'ACCION_INVALIDA', acciones });
     if (accion !== 'descartar' && !nota) return reply.code(422).send({ error: 'NOTA_REQUERIDA' });
+    const usuarioId = req.user.sub;
     if (accion === 'imponer_maestro') {
+      // Dispara un PUT contra producción: solo admin (§6.2). Pasa por el candado SYNC_SOLO_LECTURA.
       if (req.user.rol !== 'admin') return reply.code(403).send({ error: 'ROL_INSUFICIENTE' });
-      return reply.code(501).send({ error: 'NO_DISPONIBLE_AUN', detalle: 'Imponer el maestro escribe en el canal: llega con el push de stock (Fase 4 de E3).' });
+      try {
+        const escrito = await imponerMaestro(d);
+        await prisma.$transaction(async (tx) => {
+          await cerrarDiscrepancia(tx, d.id, { estado: 'resuelta', usuarioId, accionTomada: `imponer_maestro: ${nota}` });
+          await tx.auditoria.create({
+            data: {
+              usuarioId,
+              entidad: 'discrepancia',
+              entidadId: d.id,
+              accion: 'editar',
+              valorAnterior: { tipo: d.tipo, estado: 'abierta', valorMaestro: d.valorMaestro, valorCanal: d.valorCanal, valorPublicado: d.valorPublicado },
+              valorNuevo: { estado: 'resuelta', accion, nota, ...escrito },
+            },
+          });
+        });
+        return { id: d.id, estado: 'resuelta', accion, ...escrito };
+      } catch (e) {
+        if (e instanceof Error && e.name === 'ErrorEscrituraBloqueada') {
+          return reply.code(422).send({ error: 'CANDADO_SOLO_LECTURA', detalle: e.message });
+        }
+        return responderError(reply, e);
+      }
     }
 
-    const usuarioId = req.user.sub;
     try {
       const resultado = await prisma.$transaction(async (tx) => {
         let detalle: Record<string, unknown> = {};

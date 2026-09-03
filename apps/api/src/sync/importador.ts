@@ -20,6 +20,7 @@ import {
 import { prisma } from '../db.js';
 import { entorno } from '../entorno.js';
 import { mapearOnplay, mapearOnplaygames, type ResultadoMapeo } from './mapeo.js';
+import { registrarDiscrepancia } from './discrepancias.js';
 import {
   CLAVE_PADRE_EXTERNO,
   CLAVE_VARIANTE,
@@ -296,6 +297,18 @@ interface ContextoImportacion {
   skusVistos: Set<string>;
   /** SKUs EXTERNOS vistos en esta corrida: detecta SKUs duplicados en el origen. */
   externoSkusVistos: Set<string>;
+  /**
+   * E3 §5.3: con pushPrecio encendido el pull NO escribe precioVenta (gana el maestro;
+   * si difiere, discrepancia precio_derivado). Con pushStock encendido el pull no
+   * despublica solo: abre producto_desaparecido y lo decide una persona.
+   */
+  pushPrecio: boolean;
+  pushStock: boolean;
+}
+
+async function interruptoresDelCanal(canalId: CanalWoo): Promise<{ pushPrecio: boolean; pushStock: boolean }> {
+  const c = await prisma.canal.findUnique({ where: { id: canalId }, select: { pushPrecio: true, pushStock: true } });
+  return { pushPrecio: c?.pushPrecio ?? false, pushStock: c?.pushStock ?? false };
 }
 
 async function procesarItem(
@@ -332,14 +345,26 @@ async function procesarItem(
     if (!dryRun) {
       const actual = await prisma.producto.findUniqueOrThrow({
         where: { id: pc.productoId },
-        select: { codigoBarras: true, atributos: true },
+        select: { codigoBarras: true, atributos: true, precioVenta: true },
       });
+      // E3 §5.3: con pushPrecio el maestro manda; el precio del canal solo genera aviso.
+      if (ctx.pushPrecio && actual.precioVenta !== item.precio) {
+        await registrarDiscrepancia(prisma, {
+          canalId,
+          tipo: 'precio_derivado',
+          productoCanalId: pc.id,
+          valorMaestro: actual.precioVenta,
+          valorCanal: item.precio,
+          valorPublicado: pc.precioPublicado,
+          detalle: 'el pull de catálogo vio otro precio en el canal; con pushPrecio encendido no se copia (E3 §5.3)',
+        });
+      }
       await prisma.$transaction([
         prisma.producto.update({
           where: { id: pc.productoId },
           data: {
             nombre: item.nombre,
-            precioVenta: item.precio,
+            ...(ctx.pushPrecio ? {} : { precioVenta: item.precio }),
             imagenUrl: item.imagenUrl,
             ...completarFaltantes(actual, item),
           },
@@ -493,6 +518,7 @@ export async function importarCanal(
     reservador: new ReservadorSku(dryRun),
     skusVistos: new Set(),
     externoSkusVistos: new Set(),
+    ...(await interruptoresDelCanal(canalId)),
   };
 
   // El árbol del canal solo hace falta en onplay.cl (ascendencia de one-piece-tcg, §6.3).
@@ -663,6 +689,7 @@ export async function sincronizarIncremental(canalId: CanalWoo): Promise<Resumen
     reservador: new ReservadorSku(false),
     skusVistos: new Set(),
     externoSkusVistos: new Set(),
+    ...(await interruptoresDelCanal(canalId)),
   };
   let arbol = new Map<number, CategoriaWoo>();
   if (canalId === 'onplay_cl') {
@@ -697,6 +724,23 @@ export async function sincronizarIncremental(canalId: CanalWoo): Promise<Resumen
           const ids = [productoWoo.id];
           if (productoWoo.type === 'variable') {
             ids.push(...(productoWoo.variations ?? []));
+          }
+          if (ctx.pushStock) {
+            // E3 §5.3: con pushStock el pull no despublica solo; abre producto_desaparecido.
+            const vinculos = await prisma.productoCanal.findMany({
+              where: { canalId, externoId: { in: ids }, publicado: true },
+              select: { id: true, externoId: true },
+            });
+            for (const v of vinculos) {
+              await registrarDiscrepancia(prisma, {
+                canalId,
+                tipo: 'producto_desaparecido',
+                productoCanalId: v.id,
+                detalle: `el canal lo tiene en estado "${productoWoo.status}" (externoId=${v.externoId}); con pushStock encendido lo decide una persona (E3 §5.3)`,
+              });
+            }
+            resumen.despublicados += vinculos.length;
+            continue;
           }
           const r = await prisma.productoCanal.updateMany({
             where: { canalId, externoId: { in: ids }, publicado: true },

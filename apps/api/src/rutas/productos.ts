@@ -7,6 +7,7 @@ import { prisma } from '../db.js';
 import { adjuntarStock } from '../stock/libro.js';
 import { idsSubarbol } from '../categorias.js';
 import { ReservadorSku } from '../sync/importador.js';
+import { publicarProductoADemanda } from '../sync/push.js';
 
 const TIPOS_VALIDOS = Object.keys(PREFIJO_POR_TIPO);
 
@@ -358,9 +359,27 @@ export default async function rutasProductos(app: FastifyInstance) {
         anteriores as Prisma.InputJsonValue,
         (apagaControl ? { ...cambios, nota: notaControl } : cambios) as Prisma.InputJsonValue,
       );
+      // E3 G9: publicación a demanda al guardar un precio, sin bloquear la respuesta.
+      // Solo actúa en canales con pushPrecio encendido; el cron de 15 min es la red de seguridad.
+      if (cambioPrecio) {
+        void publicarProductoADemanda(producto.id, req.user.sub).then(
+          (r) => req.log.info({ productoId: producto.id, ...r }, 'publicación a demanda (E3 G9)'),
+          (e) => req.log.error(e, 'publicación a demanda falló'),
+        );
+      }
       return producto;
     },
   );
+
+  // ---------- POST /productos/:id/publicar — E3 G9 (06 §6.1), rol encargado ----------
+  // Publica el precio del producto en sus canales con pushPrecio encendido. Es la misma
+  // corrida de precios acotada a un producto: pasa por el candado y el cerrojo.
+  app.post<{ Params: { id: string } }>('/productos/:id/publicar', encargado, async (req, reply) => {
+    const producto = await prisma.producto.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!producto) return reply.code(404).send({ error: 'PRODUCTO_NO_ENCONTRADO' });
+    const canales = await publicarProductoADemanda(producto.id, req.user.sub);
+    return { productoId: producto.id, canales };
+  });
 
   // ---------- POST /productos/:id/fusionar — F11 (§6.6), rol encargado ----------
   // El :id es el SOBREVIVIENTE. Nunca automático: lo confirma un humano en V9.

@@ -570,6 +570,7 @@ enum TipoDiscrepancia {
   producto_desaparecido
   pedido_anulado
   pedido_sin_stock // §8.4 — al FINAL del enum
+  canal_sin_gestion // §7.4: manage_stock apagado en el canal; encenderlo lo decide una persona
 }
 
 enum EstadoDiscrepancia {
