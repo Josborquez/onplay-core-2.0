@@ -26,6 +26,8 @@ export interface OpcionesPush {
   usuarioId: string | null;
   /** Acotar a estos productos (publicación a demanda, G9). */
   productoIds?: string[];
+  /** G10: reintento acotado — solo los vínculos que quedaron en `error` la corrida anterior. */
+  soloErrores?: boolean;
 }
 
 export interface ItemPlanPush {
@@ -128,12 +130,19 @@ async function enParalelo<T>(items: T[], n: number, fn: (item: T) => Promise<voi
   await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, trabajador));
 }
 
-async function vinculosElegibles(canalId: string, soloConControl: boolean, productoIds?: string[]): Promise<Vinculo[]> {
+async function vinculosElegibles(
+  canalId: string,
+  soloConControl: boolean,
+  productoIds?: string[],
+  soloErroresDe?: 'precio' | 'stock',
+): Promise<Vinculo[]> {
   return prisma.productoCanal.findMany({
     where: {
       canalId,
       publicado: true,
       externoId: { not: null },
+      ...(soloErroresDe === 'precio' ? { syncPrecio: 'error' as const } : {}),
+      ...(soloErroresDe === 'stock' ? { syncStock: 'error' as const } : {}),
       producto: { activo: true, ...(soloConControl ? { controlaStock: true } : {}), ...(productoIds ? { id: { in: productoIds } } : {}) },
     },
     include: { producto: { select: { id: true, sku: true, precioVenta: true, controlaStock: true, atributos: true } } },
@@ -170,7 +179,7 @@ export async function publicarPrecios(canalId: CanalWoo, op: OpcionesPush): Prom
   const contadores = contadoresVacios();
   const plan: ItemPlanPush[] = [];
   try {
-    const vinculos = await vinculosElegibles(canalId, false, op.productoIds);
+    const vinculos = await vinculosElegibles(canalId, false, op.productoIds, op.soloErrores ? 'precio' : undefined);
     contadores.leidos = vinculos.length;
     const lectura = await leerCanal(cliente, vinculos);
     const aEscribir: { v: Vinculo; maestro: number; item: ItemPlanPush }[] = [];
@@ -319,7 +328,7 @@ export async function publicarStock(canalId: CanalWoo, op: OpcionesPush): Promis
   let noElegibles = 0;
   try {
     const [vinculos, publicados] = await Promise.all([
-      vinculosElegibles(canalId, true, op.productoIds),
+      vinculosElegibles(canalId, true, op.productoIds, op.soloErrores ? 'stock' : undefined),
       prisma.productoCanal.count({ where: { canalId, publicado: true, externoId: { not: null }, producto: { activo: true, controlaStock: false } } }),
     ]);
     noElegibles = publicados;
@@ -408,6 +417,32 @@ export async function publicarStock(canalId: CanalWoo, op: OpcionesPush): Promis
   if (!op.dryRun && contadores.fallidos === 0 && !op.productoIds) {
     await prisma.canal.update({ where: { id: canalId }, data: { ultimoPushStockEn: new Date() } });
   }
+  // RS4 (§13): si la deriva se vuelve constante, se apaga el push de stock del canal. Cuentan
+  // solo las accionables; `primera_publicacion` y `precio_derivado` quedan fuera (§4.4, §11).
+  // Sin correo (P6): queda en Auditoria, en el log y a la vista en V12.
+  let advertencia: string | undefined;
+  if (!op.dryRun) {
+    const accionables = await prisma.discrepancia.count({
+      where: { canalId, estado: 'abierta', tipo: { notIn: ['primera_publicacion', 'precio_derivado'] } },
+    });
+    if (accionables > entorno.alertaDiscrepancias) {
+      advertencia = `${accionables} discrepancias accionables abiertas (> ALERTA_DISCREPANCIAS=${entorno.alertaDiscrepancias}): se apagó pushStock del canal (RS4)`;
+      await prisma.canal.update({ where: { id: canalId }, data: { pushStock: false } });
+      await prisma.auditoria.create({
+        data: {
+          usuarioId: op.usuarioId ?? (await usuarioSistemaId()),
+          entidad: 'canal',
+          entidadId: canalId,
+          accion: 'editar',
+          valorAnterior: { pushStock: true },
+          valorNuevo: { pushStock: false, motivo: advertencia, corridaId: corrida.id },
+        },
+      });
+      await prisma.syncCorrida.update({ where: { id: corrida.id }, data: { mensaje: advertencia } });
+    }
+  } else if (!hayIngesta) {
+    advertencia = 'sin ingesta reciente: la corrida real se omitiría (§4.2)';
+  }
   return {
     corridaId: corrida.id,
     simulacion: op.dryRun,
@@ -415,7 +450,7 @@ export async function publicarStock(canalId: CanalWoo, op: OpcionesPush): Promis
     canalId,
     resumen: contadores,
     noElegibles,
-    ...(op.dryRun && !hayIngesta ? { advertencia: 'sin ingesta reciente: la corrida real se omitiría (§4.2)' } : {}),
+    ...(advertencia ? { advertencia } : {}),
     plan,
   };
 }

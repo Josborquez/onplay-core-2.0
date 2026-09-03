@@ -66,15 +66,16 @@ export default async function rutasSincronizacion(app: FastifyInstance) {
     ['stock', publicarStock],
     ['adoptar', adoptarStock],
   ] as const) {
-    app.post<{ Params: { canalId: string }; Querystring: { dryRun?: string; productoIds?: string } }>(
+    app.post<{ Params: { canalId: string }; Querystring: { dryRun?: string; productoIds?: string; soloErrores?: string } }>(
       `/sync/:canalId/${ruta}`,
       admin,
       async (req, reply) => {
         if (!canalValido(req.params.canalId, reply)) return;
         const dryRun = req.query.dryRun !== 'false';
         const productoIds = req.query.productoIds ? req.query.productoIds.split(',').filter(Boolean) : undefined;
+        const soloErrores = req.query.soloErrores === 'true'; // G10: reintento acotado a los fallidos
         try {
-          return await correr(req.params.canalId, { dryRun, usuarioId: req.user.sub, productoIds });
+          return await correr(req.params.canalId, { dryRun, usuarioId: req.user.sub, productoIds, soloErrores });
         } catch (e) {
           return responderError(reply, e);
         }
@@ -299,7 +300,8 @@ export default async function rutasSincronizacion(app: FastifyInstance) {
         if (accion === 'adoptar_canal') {
           // El canal tiene razón: ajuste con la diferencia sobre la ubicación online y
           // stockPublicado = valor del canal, para que el push deje de reportarlo.
-          if (!d.productoCanal || d.valorCanal === null || d.valorMaestro === null) {
+          const tiposStock = ['stock_derivado', 'primera_publicacion', 'canal_sin_gestion'];
+          if (!tiposStock.includes(d.tipo) || !d.productoCanal || d.valorCanal === null || d.valorMaestro === null) {
             throw new ErrorCorrida({ error: 'ACCION_NO_APLICA', detalle: 'adoptar_canal exige una discrepancia de stock con los tres números' });
           }
           const ubicacion = await tx.ubicacion.findUnique({ where: { codigo: entorno.syncUbicacionOnline } });

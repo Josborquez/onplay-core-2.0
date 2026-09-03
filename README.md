@@ -54,7 +54,15 @@ WOO_ONPLAYGAMES_CS=cs_xxxxxxxx
 
 SYNC_HABILITADO=true
 SYNC_CRON="*/30 * * * *"
-SYNC_SOLO_LECTURA=true      # candado de la Etapa 1; cambiarlo es decisión de E3
+SYNC_SOLO_LECTURA=true      # candado de la Etapa 1; se abre en la Fase 0 de E3 (con claves de ESCRITURA y respaldo)
+
+# Etapa 3 — sincronización bidireccional (06-SDD §11)
+SYNC_CRON_COMPLETA="*/15 * * * *"   # pedidos → precios → stock, solo canales con algún interruptor encendido
+SYNC_LOTE=50
+SYNC_CONCURRENCIA=4
+SYNC_UBICACION_ONLINE=bodega        # de dónde descuenta una venta online
+SYNC_VENTANA_INGESTA_MIN=20         # antigüedad máxima de la ingesta para permitir el push de stock
+ALERTA_DISCREPANCIAS=25             # RS4: por encima se apaga pushStock del canal (queda en Auditoría)
 
 CORS_ORIGINS=               # vacío en producción same-origin; lista separada por comas si aplica
 ```
@@ -105,6 +113,19 @@ Spec: `docs/03-SDD-etapa2-inventario.md`. Guía para el encargado: `docs/09-guia
 - **Devoluciones** con folio `D-año-#####` desde `/admin/ventas` (salen de la caja abierta del encargado) y **movimientos de caja** (`Caja ±` en el Mostrador); ambos entran al arqueo.
 
 Rutas nuevas bajo `/api/v1`: `ubicaciones`, `stock`, `stock/alertas`, `stock/export.csv`, `stock/movimientos`, `stock/traslados`, `stock/verificar`, `productos/:id/stock`, `productos/:id/movimientos`, `recuentos*`, `ventas/:id/devoluciones`, `devoluciones`, `turnos/:id/movimientos-caja`.
+
+## Etapa 3 — Sincronización bidireccional (2026-09-03)
+
+Spec: `docs/06-SDD-etapa3-sincronizacion.md`. El maestro escribe precio y stock en los sitios y lee sus pedidos. Construida en local; **antes de encender el push en producción** hacen falta claves `ck_/cs_` con permiso de escritura, `SYNC_SOLO_LECTURA=false`, un respaldo de ambos sitios restaurado en un entorno de prueba y staging (06 §9 Fase 0). Mientras el candado esté puesto, encender `pushPrecio`/`pushStock` responde `422 CANDADO_SOLO_LECTURA`.
+
+- **Interruptores por canal** (`/admin/sync`, solo admin): ingesta de pedidos → publicar precio → publicar stock, en ese orden. Publicar stock exige la ingesta encendida. Toda corrida **simula por defecto**; escribir exige `?dryRun=false` o el botón «Publicar».
+- **Ingesta de pedidos** (E3c): pedidos `processing`/`completed` del canal → `PedidoCanal` con líneas mapeadas a productos, descuento `venta_online` en la ubicación online (`bodega`). Un pedido pagado sin stock deja el libro en negativo y abre `pedido_sin_stock` (R-016). Pedidos cancelados o reembolsados después → `pedido_anulado`; nunca se revierte solo.
+- **Push de precio** (E3a): escribe `regular_price`; **nunca toca productos en oferta** (`precio_en_oferta`). Publicación a demanda al cambiar un precio en `/admin/productos`.
+- **Push de stock** (E3b): verificación previa contra lo último publicado (regla S2): si el canal cambió por fuera del maestro, **no se escribe** y queda `stock_derivado` con los tres números. Solo entran productos con `controlaStock`. Antes de encenderlo: **Adoptar stock del canal** (punto de partida).
+- **Discrepancias** (`/admin/discrepancias`, encargado+): tarjetas por tipo con maestro · canal · publicado y tres acciones con su consecuencia escrita («El canal tiene razón» = ajuste en inventario; «El maestro tiene razón» = escribe en el canal, solo admin; «Descartar»). **Pedidos online** (`/admin/pedidos`): líneas sin producto se vinculan a mano.
+- **Seguridad:** cerrojo por canal y tipo de corrida (`409 CORRIDA_EN_CURSO`), barrido de arranque, PUT acotado a `regular_price`/`stock_quantity`, corte RS4 (más de `ALERTA_DISCREPANCIAS` accionables → se apaga `pushStock`), reintento acotado a los fallidos (`?soloErrores=true`), purga de detalle de corridas a 90 días.
+
+Rutas nuevas bajo `/api/v1`: `canales`, `sync/:canalId/pedidos|precios|stock|adoptar|completa`, `sync/corridas[/:id]`, `sync/pedidos`, `sync/pedidos/:pedidoId/lineas/:lineaId/mapear`, `sync/discrepancias[/:id]`, `sync/discrepancias/:id/resolver`, `productos/:id/publicar`.
 
 ## Estructura
 

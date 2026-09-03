@@ -29,6 +29,8 @@ const ITEMS: { a: string; etiqueta: string; icono: ReactNode; rol: RolUsuario }[
   { a: '/admin/clientes', etiqueta: 'Clientes', icono: ICONO_PERSONAS, rol: 'encargado' },
   { a: '/admin/duplicados', etiqueta: 'Duplicados', icono: '⧉', rol: 'encargado' },
   { a: '/admin/auditoria', etiqueta: 'Auditoría', icono: '≣', rol: 'encargado' },
+  { a: '/admin/pedidos', etiqueta: 'Pedidos online', icono: '⧈', rol: 'encargado' }, // E3 V14
+  { a: '/admin/discrepancias', etiqueta: 'Discrepancias', icono: '⚠', rol: 'encargado' }, // E3 V13
   { a: '/admin/sync', etiqueta: 'Sincronización', icono: '⇄', rol: 'admin' },
 ];
 

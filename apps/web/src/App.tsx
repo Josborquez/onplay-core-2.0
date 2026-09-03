@@ -19,6 +19,8 @@ import { Alertas } from './pantallas/admin/Alertas.js';
 import { Recuentos, RecuentoDetalle } from './pantallas/admin/Recuentos.js';
 import { Productos } from './pantallas/admin/Productos.js';
 import { Sync } from './pantallas/admin/Sync.js';
+import { Discrepancias } from './pantallas/admin/Discrepancias.js';
+import { PedidosOnline } from './pantallas/admin/PedidosOnline.js';
 import { TurnosAdmin } from './pantallas/admin/TurnosAdmin.js';
 import { VentasAdmin } from './pantallas/admin/VentasAdmin.js';
 import { ProveedorSesion, useSesion } from './sesion.js';
@@ -129,6 +131,8 @@ export function App() {
           <Route path="/admin/duplicados" element={admin(<Duplicados />)} />
           <Route path="/admin/auditoria" element={admin(<Auditoria />)} />
           <Route path="/admin/sync" element={admin(<Sync />, 'admin')} />
+          <Route path="/admin/discrepancias" element={admin(<Discrepancias />)} /> {/* E3 V13 */}
+          <Route path="/admin/pedidos" element={admin(<PedidosOnline />)} /> {/* E3 V14 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

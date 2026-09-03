@@ -60,6 +60,11 @@ export async function correrCompletas(log: Log): Promise<void> {
   if (corriendoCompleta) return;
   corriendoCompleta = true;
   try {
+    // Purga a 90 días de SyncCorridaItem (§5.2): las corridas quedan, el detalle por ítem no.
+    const limite = new Date(Date.now() - 90 * 24 * 3600 * 1000);
+    const purga = await prisma.syncCorridaItem.deleteMany({ where: { corrida: { iniciadaEn: { lt: limite } } } }).catch(() => ({ count: 0 }));
+    if (purga.count > 0) log.info({ purgados: purga.count }, 'ítems de corridas de más de 90 días purgados');
+
     const canales = await prisma.canal.findMany({
       where: { tipo: 'woocommerce', activo: true, OR: [{ ingestaPedidos: true }, { pushPrecio: true }, { pushStock: true }] },
       select: { id: true },
