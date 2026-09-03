@@ -30,6 +30,7 @@
 | R-012 | 2026-09-02 | Backoffice (V5) | Tipo = Sellado + Categoría = Magic no muestra nada | Corregido (filtro Juego + categoría por subárbol) |
 | R-013 | 2026-09-02 | Etapa 2 | Cierre de E2: código completo, queda el recuento real (criterio 18) | Abierto (del dueño) |
 | R-014 | 2026-09-02 | Mostrador / Stock | El stock no puede quedar en −1 ni la venta aceptar más de lo disponible; icono de Clientes | Corregido (cambia D-E2-1 y M2 de 03-SDD) |
+| R-015 | 2026-09-03 | Importador / Sync | Cada corrida completa repetía en `SyncLog` los mismos errores conocidos | Corregido |
 
 ---
 
@@ -173,6 +174,14 @@
 - **Verificado:** merma de 5 con 1 disponible → 422; venta de 2 con 1 → 422 con `descripcion`; dos ventas simultáneas de la última unidad → una 201 y una 422, stock 0, `verificar` sin diferencias; delta trae la Coca tras un ingreso.
 - **Reporte posterior del dueño «no puedo seleccionar más de un producto»:** el navegador tenía en caché el stock viejo (esquema 3, marcas en hora local) y el tope bloqueaba con un número desactualizado; además en dev el Sprite está en −1 y no se puede agregar por diseño. Corregido: el esquema del caché sube a 4 (descarga completa única) y, con conexión, al agregar un producto con control el tope se toma del servidor en el momento (`GET /productos/:id/stock`); sin conexión vale el caché. Verificado en Chrome: dos productos distintos, tres unidades de la Coca con «+» apagado en 3, Sprite → «no tiene stock disponible».
 - **Archivos:** `stock/libro.ts`, `rutas/ventas.ts`, `rutas/productos.ts` (delta), `catalogo.ts` (esquema 4), `Mostrador.tsx`, `PanelVenta.tsx`, `DialogoCobro.tsx`, `DialogoMovimientoStock.tsx`, `BarraLateral.tsx`, `tipos.ts`, docs 03 y 09.
+
+### R-015 · Cada corrida completa repetía en `SyncLog` los mismos errores conocidos
+
+- **Fecha:** 2026-09-03. **Estado:** Corregido.
+- **Dónde se vio:** `/admin/sync`, bitácora de errores. onplaygames_cl tiene 11 errores permanentes del origen (2 productos sin precio, 9 SKUs de variación duplicados con sufijo `-1`) y cada `POST /sync/:canalId/importar?dryRun=false` los volvía a insertar: 63 filas en dev para 21 detalles distintos. El criterio 2 de `02-SDD` §10 («`SyncLog` abiertos → 0») se volvía inalcanzable, porque marcar resuelto no servía de nada hasta la corrida siguiente.
+- **Decisión:** un error de sync que ya está **abierto** (`resultado='error'`, `resuelto=false`) con el mismo canal y el mismo `detalle` no se vuelve a registrar. Marcarlo resuelto lo deja reaparecer en la próxima corrida si el origen sigue igual, así que la bitácora sigue diciendo la verdad: una fila abierta por problema real. Aplica a la importación completa y al incremental (`registrarErrorSync` en `apps/api/src/sync/importador.ts`). El `resumen.errores` de la respuesta no cambia: sigue contando todo lo que falló en la corrida.
+- **Verificado por curl:** importación real de onplaygames_cl con 11 errores → 0 filas nuevas (21 abiertas antes y después); marcar una resuelta por `PATCH /sync/logs/:id` y reimportar → reaparece exactamente una vez.
+- **Pendiente del dueño (criterio 2):** en dev quedan 10 filas abiertas «viejas» (6 del 2026-09-01 y 4 del 2026-09-02 13:56) cuyo texto ya no coincide con el actual porque R-001/R-003 cambiaron el nombre de las variaciones dentro del detalle; hay que marcarlas resueltas a mano una vez. Las 11 vigentes son datos del origen y se resuelven en Woo o se marcan resueltas con criterio.
 
 ---
 

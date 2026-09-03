@@ -29,6 +29,20 @@ import {
 } from './variaciones.js';
 
 export type CanalWoo = 'onplay_cl' | 'onplaygames_cl';
+
+/**
+ * Un error de sync ya ABIERTO con el mismo canal y detalle no se vuelve a registrar: cada
+ * corrida completa repetia los mismos 11 errores conocidos y el criterio 2 de 02 §10
+ * («SyncLog abiertos → 0») se volvia inalcanzable. Marcarlo resuelto lo deja reaparecer.
+ */
+async function registrarErrorSync(canalId: string, operacion: string, detalle: string): Promise<void> {
+  const abierto = await prisma.syncLog.findFirst({
+    where: { canalId, resultado: 'error', resuelto: false, detalle },
+    select: { id: true },
+  });
+  if (abierto) return;
+  await prisma.syncLog.create({ data: { canalId, operacion, resultado: 'error', detalle } });
+}
 export const CANALES_WOO: CanalWoo[] = ['onplay_cl', 'onplaygames_cl'];
 
 export interface ErrorImportacion {
@@ -506,14 +520,11 @@ export async function importarCanal(
   const registrarError = async (error: ErrorImportacion) => {
     resumen.errores.push(error);
     if (!dryRun) {
-      await prisma.syncLog.create({
-        data: {
-          canalId,
-          operacion: 'importar',
-          resultado: 'error',
-          detalle: `${error.detalle} — externoId=${error.externoId ?? '?'} sku=${error.externoSku ?? '?'} "${error.nombre}"`,
-        },
-      });
+      await registrarErrorSync(
+        canalId,
+        'importar',
+        `${error.detalle} — externoId=${error.externoId ?? '?'} sku=${error.externoSku ?? '?'} "${error.nombre}"`,
+      );
     }
   };
 
@@ -675,9 +686,7 @@ export async function sincronizarIncremental(canalId: CanalWoo): Promise<Resumen
 
   const registrarError = async (detalle: string) => {
     resumen.errores += 1;
-    await prisma.syncLog.create({
-      data: { canalId, operacion: 'incremental', resultado: 'error', detalle },
-    });
+    await registrarErrorSync(canalId, 'incremental', detalle);
   };
 
   for await (const lote of cliente.paginarProductosModificados(desde)) {
