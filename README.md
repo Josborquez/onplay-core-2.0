@@ -89,6 +89,8 @@ El proceso corre con `tsx` (los packages del monorepo se consumen desde su fuent
 
 Con `NODE_ENV=production` la API sirve `apps/web/dist` en `/` (con fallback SPA a `index.html`) y el cron de sincronización incremental corre cada 30 minutos dentro del mismo proceso.
 
+La guía completa para un VPS de Hostinger (instalación inicial, Nginx con HTTPS, pm2, respaldo diario y script de actualización) está en [`docs/despliegue/`](docs/despliegue/README.md). Requiere VPS: el hosting compartido no ejecuta Node.
+
 ## Comandos útiles
 
 | Comando | Qué hace |

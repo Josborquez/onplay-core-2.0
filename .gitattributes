@@ -1,0 +1,5 @@
+# Los scripts y archivos de despliegue se copian a un servidor Linux: siempre LF,
+# aunque el checkout sea en Windows (un CRLF rompe el shebang y los here-docs).
+*.sh                          text eol=lf
+docs/despliegue/cron-*        text eol=lf
+docs/despliegue/*.conf        text eol=lf

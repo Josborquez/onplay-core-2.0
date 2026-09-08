@@ -1,0 +1,7 @@
+# /etc/cron.d/onplay-respaldo — dump diario de onplay_core a las 03:00 (hora del servidor).
+# El script escribe una línea por corrida en /var/log/onplay-respaldo.log; si falla, cron avisa por
+# correo al root (si hay MTA) y la línea de error queda en el mismo log.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 3 * * * root /usr/local/bin/respaldo-onplay.sh >> /var/log/onplay-respaldo.log 2>&1
