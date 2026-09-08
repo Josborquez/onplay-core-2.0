@@ -24,6 +24,13 @@ describe('skuMaestroDesdeExterno (§6.4)', () => {
     expect(skuMaestroDesdeExterno('PTDM-240pp-NM-EN')).toBeNull();
   });
 
+  it('R-018: acepta el sufijo -F de foil de la recarga ManaBox y lo conserva', () => {
+    expect(skuMaestroDesdeExterno('HOB-5-NM-EN-F')).toBe('MTG-HOB-005-NM-EN-F');
+    expect(skuMaestroDesdeExterno('PRCQ-3-NM-EN-F')).toBe('MTG-PRCQ-003-NM-EN-F');
+    expect(skuMaestroDesdeExterno('HOB-5-NM-EN-FF')).toBeNull();
+    expect(skuMaestroDesdeExterno('HOB-5-NM-EN-X')).toBeNull();
+  });
+
   it('condiciones válidas: NM, LP, MP, HP, DMG', () => {
     expect(skuMaestroDesdeExterno('MOM-75-DMG-EN')).toBe('MTG-MOM-075-DMG-EN');
     expect(skuMaestroDesdeExterno('MOM-75-XX-EN')).toBeNull();

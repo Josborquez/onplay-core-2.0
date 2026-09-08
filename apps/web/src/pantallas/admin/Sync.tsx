@@ -43,6 +43,7 @@ interface ResumenImportacion {
   sinPrecio: number;
   sinClasificar: number;
   duplicadosMarcados: number;
+  despublicados?: number;
   errores: { detalle: string }[];
   duracionMs: number;
 }
@@ -347,7 +348,7 @@ export function Sync() {
               </div>
               <p className="num text-cuerpo text-lab2">
                 {resumenImport.procesados} procesados · {resumenImport.creados} creados · {resumenImport.actualizados} actualizados · {resumenImport.omitidos} omitidos ·{' '}
-                {resumenImport.sinPrecio} sin precio · {resumenImport.duplicadosMarcados} posibles duplicados · {resumenImport.errores.length} errores · {(resumenImport.duracionMs / 1000).toFixed(1)} s
+                {resumenImport.sinPrecio} sin precio · {resumenImport.despublicados ?? 0} ya no están en el canal · {resumenImport.duplicadosMarcados} posibles duplicados · {resumenImport.errores.length} errores · {(resumenImport.duracionMs / 1000).toFixed(1)} s
               </p>
             </div>
           ) : null}

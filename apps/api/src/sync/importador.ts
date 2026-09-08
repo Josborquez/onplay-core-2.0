@@ -63,6 +63,8 @@ export interface ResumenImportacion {
   sinPrecio: number;
   sinClasificar: number;
   duplicadosMarcados: number;
+  /** R-018: vínculos publicados que el canal ya no devolvió (borrados en duro). */
+  despublicados: number;
   errores: ErrorImportacion[];
   duracionMs: number;
 }
@@ -539,9 +541,12 @@ export async function importarCanal(
     sinPrecio: 0,
     sinClasificar: 0,
     duplicadosMarcados: 0,
+    despublicados: 0,
     errores: [],
     duracionMs: 0,
   };
+  // R-018: todo externoId que el canal devolvió en esta corrida (con o sin error de ítem).
+  const externoIdsVistos = new Set<number>();
 
   const registrarError = async (error: ErrorImportacion) => {
     resumen.errores.push(error);
@@ -556,6 +561,8 @@ export async function importarCanal(
 
   for await (const lote of cliente.paginarProductos()) {
     for (const productoWoo of lote) {
+      externoIdsVistos.add(productoWoo.id);
+      for (const vid of productoWoo.variations ?? []) externoIdsVistos.add(vid);
       let items: ItemImportable[];
       try {
         items = await construirItems(productoWoo, cliente, mapear);
@@ -597,6 +604,41 @@ export async function importarCanal(
             detalle: (e as Error).message,
           });
         }
+      }
+    }
+  }
+
+  // R-018: lo que el canal ya no devuelve deja de estar publicado (nunca se borra, P9).
+  // Solo si la paginación entregó algo: una respuesta vacía no debe despublicar el canal entero.
+  if (externoIdsVistos.size > 0) {
+    // También por externoSku: en simulación los re-creados en Woo (mismo SKU, otro id) aún
+    // conservan el externoId viejo y no deben contarse como desaparecidos.
+    const noVistos = await prisma.productoCanal.findMany({
+      where: {
+        canalId,
+        publicado: true,
+        externoId: { notIn: [...externoIdsVistos] },
+        OR: [{ externoSku: null }, { externoSku: { notIn: [...ctx.externoSkusVistos] } }],
+      },
+      select: { id: true, externoId: true },
+    });
+    resumen.despublicados = noVistos.length;
+    if (!dryRun && noVistos.length > 0) {
+      if (ctx.pushStock) {
+        // E3 §5.3: con pushStock el pull no despublica solo; abre producto_desaparecido.
+        for (const v of noVistos) {
+          await registrarDiscrepancia(prisma, {
+            canalId,
+            tipo: 'producto_desaparecido',
+            productoCanalId: v.id,
+            detalle: `el canal ya no devuelve el producto (externoId=${v.externoId}); con pushStock encendido lo decide una persona (E3 §5.3)`,
+          });
+        }
+      } else {
+        await prisma.productoCanal.updateMany({
+          where: { id: { in: noVistos.map((v) => v.id) } },
+          data: { publicado: false, sincronizadoEn: new Date() },
+        });
       }
     }
   }
