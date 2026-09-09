@@ -4,9 +4,47 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../db.js';
 import { entorno } from '../entorno.js';
 
+// Ping a la tienda con caché de 60 s: la marca de la barra lateral lo pide cada 5 min por usuario.
+const cachePing = new Map<string, { en: number; ok: boolean }>();
+async function tiendaResponde(canal: { url: string; ck: string; cs: string }): Promise<boolean> {
+  try {
+    const url = new URL('/wp-json/wc/v3/products', canal.url);
+    url.searchParams.set('per_page', '1');
+    url.searchParams.set('consumer_key', canal.ck);
+    url.searchParams.set('consumer_secret', canal.cs);
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export default async function rutasCanales(app: FastifyInstance) {
-  const admin = { preHandler: app.requiereRol('admin') };
   const encargado = { preHandler: app.requiereRol('encargado') };
+  const vendedor = { preHandler: app.requiereRol('vendedor') };
+
+  // R-024: marca para cualquier rol (barra lateral): ¿responde la tienda? ¿cuándo se leyó el catálogo?
+  app.get('/canales/estado', vendedor, async () => {
+    const canales = await prisma.canal.findMany({ where: { tipo: 'woocommerce', activo: true }, orderBy: { id: 'asc' } });
+    const grupos = await prisma.productoCanal.groupBy({ by: ['canalId'], _count: { _all: true }, _max: { sincronizadoEn: true } });
+    const tiendas = await Promise.all(
+      canales.map(async (c) => {
+        const cfg = entorno.canales[c.id as 'onplay_cl' | 'onplaygames_cl'];
+        const g = grupos.find((x) => x.canalId === c.id);
+        let enLinea: boolean | null = null;
+        if (cfg?.url && cfg.ck && cfg.cs) {
+          const cache = cachePing.get(c.id);
+          if (cache && Date.now() - cache.en < 60_000) enLinea = cache.ok;
+          else {
+            enLinea = await tiendaResponde(cfg);
+            cachePing.set(c.id, { en: Date.now(), ok: enLinea });
+          }
+        }
+        return { id: c.id, nombre: c.nombre, enLinea, ultimoCatalogoEn: g?._max.sincronizadoEn ?? null, productos: g?._count._all ?? 0 };
+      }),
+    );
+    return { comprobadoEn: new Date().toISOString(), tiendas };
+  });
 
   app.get('/canales', encargado, async () => {
     const canales = await prisma.canal.findMany({ orderBy: { id: 'asc' } });
@@ -33,7 +71,11 @@ export default async function rutasCanales(app: FastifyInstance) {
     pushStock?: unknown;
   }
 
-  app.patch<{ Params: { id: string }; Body: CuerpoCanal }>('/canales/:id', admin, async (req, reply) => {
+  // R-024: el encargado puede encender/apagar la lectura de pedidos (no escribe en la tienda);
+  // publicar precio o stock sigue siendo solo admin.
+  app.patch<{ Params: { id: string }; Body: CuerpoCanal }>('/canales/:id', encargado, async (req, reply) => {
+    const tocaPush = req.body && ('pushPrecio' in req.body || 'pushStock' in req.body);
+    if (tocaPush && req.user.rol !== 'admin') return reply.code(403).send({ error: 'ROL_INSUFICIENTE', detalle: 'Solo el administrador puede publicar en la tienda' });
     const canal = await prisma.canal.findUnique({ where: { id: req.params.id } });
     if (!canal) return reply.code(404).send({ error: 'CANAL_DESCONOCIDO' });
     if (canal.tipo !== 'woocommerce') {

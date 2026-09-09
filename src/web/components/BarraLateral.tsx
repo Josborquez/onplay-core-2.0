@@ -5,6 +5,7 @@ import { NavLink } from 'react-router-dom';
 import { useCola } from '../cola.js';
 import { useSesion } from '../sesion.js';
 import { useEnLinea } from '../tema.js';
+import { useEstadoTiendas } from '../tiendas.js';
 import { rolAlcanza, type RolUsuario } from '../tipos.js';
 
 /** Icono de personas para Clientes (R-014): dos siluetas, trazo fino, hereda el color del texto. */
@@ -31,7 +32,8 @@ const ITEMS: { a: string; etiqueta: string; icono: ReactNode; rol: RolUsuario }[
   { a: '/admin/auditoria', etiqueta: 'Auditoría', icono: '≣', rol: 'encargado' },
   { a: '/admin/pedidos', etiqueta: 'Pedidos online', icono: '⧈', rol: 'encargado' }, // E3 V14
   { a: '/admin/discrepancias', etiqueta: 'Discrepancias', icono: '⚠', rol: 'encargado' }, // E3 V13
-  { a: '/admin/sync', etiqueta: 'Sincronización', icono: '⇄', rol: 'admin' },
+  { a: '/admin/sync', etiqueta: 'Tiendas web', icono: '⇄', rol: 'encargado' }, // R-024: admin y encargado
+  { a: '/admin/sistema', etiqueta: 'Sistema', icono: '⚙', rol: 'admin' }, // 2.0 §5.5
 ];
 
 /** Estados de 05-SDD §8.1: en línea · sin conexión · sin conexión con N pendientes · enviando N. */
@@ -50,6 +52,29 @@ export function IndicadorConexion() {
     <div aria-live="polite" className="flex items-center gap-2 px-3 text-chico text-lab2">
       <span className={`inline-block h-2 w-2 rounded-full ${punto}`} aria-hidden="true" />
       {texto}
+    </div>
+  );
+}
+
+/** R-024: marca para todos los roles de si las tiendas web responden y cuándo se leyó su catálogo. */
+export function IndicadorTiendas() {
+  const estado = useEstadoTiendas();
+  if (!estado || estado.tiendas.length === 0) return null;
+  const relativo = (iso: string | null) => {
+    if (!iso) return 'sin catálogo';
+    const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    return min < 60 ? `catálogo hace ${Math.max(0, min)} min` : `catálogo hace ${Math.round(min / 60)} h`;
+  };
+  return (
+    <div className="flex flex-col gap-1 px-3 text-chico text-lab2">
+      {estado.tiendas.map((t) => (
+        <div key={t.id} className="flex items-center gap-2" title={t.enLinea === null ? 'Sin claves en el servidor' : t.enLinea ? 'La tienda responde' : 'La tienda no responde'}>
+          <span className={`inline-block h-2 w-2 rounded-full ${t.enLinea === true ? 'bg-ok' : t.enLinea === false ? 'bg-peligro' : 'bg-lab3'}`} aria-hidden="true" />
+          <span className="truncate">
+            {t.nombre} · {relativo(t.ultimoCatalogoEn)}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -122,6 +147,7 @@ export function BarraLateral({ plegada, onPlegar, tema, onTema }: Props) {
 
       <div className="mt-auto flex flex-col gap-2 border-t border-sep pt-3">
         {!plegada ? <IndicadorConexion /> : null}
+        {!plegada ? <IndicadorTiendas /> : null}
         <button
           type="button"
           onClick={onTema}

@@ -1,6 +1,7 @@
 // Rutas de sincronización F1 — 02-SDD §6 y §9.
-// Todas requieren rol admin. El import es dryRun por defecto (regla S1):
-// escribir exige ?dryRun=false explícito.
+// Leer las tiendas (catálogo, clientes, bitácora) es de encargado+ (R-024, decisión del dueño:
+// admin y encargado traen el catálogo). El import es dryRun por defecto (regla S1):
+// escribir en el maestro exige ?dryRun=false explícito. Nada de esto escribe en las tiendas.
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../db.js';
 import { entorno } from '../entorno.js';
@@ -9,7 +10,7 @@ import { importarClientesCanal } from '../sync/clientes.js';
 import { iniciarTarea, listarTareas, obtenerTarea } from '../sync/tareas.js';
 
 export default async function rutasSync(app: FastifyInstance) {
-  const soloAdmin = { preHandler: app.requiereRol('admin') };
+  const soloAdmin = { preHandler: app.requiereRol('encargado') }; // nombre histórico; R-024 lo abrió a encargado
 
   // 2.0 §5.8: con ?segundoPlano=true responde 202 con `tareaId` y la importación sigue en el
   // proceso (el borde corta a ~55 s); el resultado se consulta en GET /sync/tareas/:id.

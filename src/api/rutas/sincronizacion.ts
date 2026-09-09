@@ -31,9 +31,10 @@ export default async function rutasSincronizacion(app: FastifyInstance) {
 
   // ---------- Corridas (§6.1) ----------
 
+  // R-024: leer pedidos no escribe en la tienda → encargado+. Publicar (abajo) sigue siendo admin.
   app.post<{ Params: { canalId: string }; Querystring: { dryRun?: string } }>(
     '/sync/:canalId/pedidos',
-    admin,
+    encargado,
     async (req, reply) => {
       if (!canalValido(req.params.canalId, reply)) return;
       const dryRun = req.query.dryRun !== 'false';
