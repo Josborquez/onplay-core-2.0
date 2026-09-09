@@ -81,6 +81,10 @@ Fuente: repositorio Git conectado en el panel (cada push a `main` despliega) o z
 
 Los scripts de desarrollo siguen existiendo: `npm run seed`, `npm run crear-admin -- <email> <nombre> [password]`, `npm run renumerar-ind -- [--aplicar]`.
 
+### Staging
+
+`core-staging.onplaygames.cl` es una segunda Web App del mismo plan con base propia (`u382410428_onplaystaging`), mismas variables con secretos distintos y `SYNC_HABILITADO=false`. Ahí se prueba cada versión antes de producción, se restauran respaldos para verificarlos (criterio 6) y se abre primero el candado de E3. Con el panel conectado a Git: rama `staging` → staging, rama `main` → producción; a `main` solo llega lo que ya corrió en staging.
+
 La alternativa VPS (Nginx + pm2 + `prisma migrate deploy`) queda documentada en [`docs/despliegue/`](docs/despliegue/README.md) y sigue funcionando con `npm start`.
 
 ## Etapas de negocio
