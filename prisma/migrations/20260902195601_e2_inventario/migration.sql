@@ -1,11 +1,11 @@
 -- AlterTable
-ALTER TABLE `auditoria` MODIFY `accion` ENUM('crear', 'editar', 'anular', 'cambiar_precio', 'abrir_turno', 'cerrar_turno', 'devolver', 'recuento', 'ajustar_stock', 'vender_reservado') NOT NULL;
+ALTER TABLE `Auditoria` MODIFY `accion` ENUM('crear', 'editar', 'anular', 'cambiar_precio', 'abrir_turno', 'cerrar_turno', 'devolver', 'recuento', 'ajustar_stock', 'vender_reservado') NOT NULL;
 
 -- AlterTable
-ALTER TABLE `producto` ADD COLUMN `stockMinimo` INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE `Producto` ADD COLUMN `stockMinimo` INTEGER NOT NULL DEFAULT 0;
 
 -- AlterTable
-ALTER TABLE `productocanal` ADD COLUMN `manejaStockCanal` BOOLEAN NULL,
+ALTER TABLE `ProductoCanal` ADD COLUMN `manejaStockCanal` BOOLEAN NULL,
     ADD COLUMN `stockCanal` INTEGER NULL,
     ADD COLUMN `stockCanalEn` DATETIME(3) NULL;
 

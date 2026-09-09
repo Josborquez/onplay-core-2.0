@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE `canal` ADD COLUMN `ingestaPedidos` BOOLEAN NOT NULL DEFAULT false,
+ALTER TABLE `Canal` ADD COLUMN `ingestaPedidos` BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN `pushPrecio` BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN `pushStock` BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN `ultimaIngestaEn` DATETIME(3) NULL,
@@ -7,7 +7,7 @@ ALTER TABLE `canal` ADD COLUMN `ingestaPedidos` BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN `ultimoPushStockEn` DATETIME(3) NULL;
 
 -- AlterTable
-ALTER TABLE `productocanal` ADD COLUMN `precioPublicado` INTEGER NULL,
+ALTER TABLE `ProductoCanal` ADD COLUMN `precioPublicado` INTEGER NULL,
     ADD COLUMN `publicadoEn` DATETIME(3) NULL,
     ADD COLUMN `stockPublicado` INTEGER NULL,
     ADD COLUMN `syncMensaje` TEXT NULL,

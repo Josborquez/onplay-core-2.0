@@ -156,6 +156,40 @@ conBase('aplicarMigraciones contra MariaDB local', () => {
     }
   }, 60_000);
 
+  it('migración que falla en la PRIMERA sentencia → se marca revertida y se reintenta sola tras corregir el .sql (R-021)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'onplay-mig-'));
+    try {
+      const url = urlBase(BASE_FALLO);
+      mkdirSync(join(dir, '20990104000000_primera_rota'));
+      const ruta = join(dir, '20990104000000_primera_rota', 'migration.sql');
+      writeFileSync(ruta, 'ALTER TABLE `no_existe_tabla` ADD COLUMN `x` INT NULL;\nCREATE TABLE `luego` (`id` INT NOT NULL, PRIMARY KEY (`id`));\n');
+      await expect(aplicarMigraciones({ url, dir })).rejects.toThrow(/sentencia 1 de 2/);
+
+      // Se corrige el archivo (checksum distinto) y la siguiente corrida NO se detiene: reintenta.
+      writeFileSync(ruta, 'CREATE TABLE `antes` (`id` INT NOT NULL, PRIMARY KEY (`id`));\nCREATE TABLE `luego` (`id` INT NOT NULL, PRIMARY KEY (`id`));\n');
+      const r = await aplicarMigraciones({ url, dir });
+      expect(r.aplicadas).toEqual(['20990104000000_primera_rota']);
+
+      const p = new PrismaClient({ datasourceUrl: url });
+      try {
+        const filas = await p.$queryRawUnsafe<{ finished_at: Date | null; rolled_back_at: Date | null; logs: string | null }[]>(
+          "SELECT finished_at, rolled_back_at, logs FROM `_prisma_migrations` WHERE migration_name = '20990104000000_primera_rota' ORDER BY started_at",
+        );
+        expect(filas).toHaveLength(2);
+        expect(filas[0]!.rolled_back_at).not.toBeNull();
+        expect(filas[0]!.logs).toMatch(/revertida automáticamente/);
+        expect(filas[1]!.finished_at).not.toBeNull();
+        const estado = await estadoMigraciones(p, dir);
+        expect(estado.aplicadas).toEqual(['20990104000000_primera_rota']);
+        expect(estado.fallidas).toEqual([]);
+      } finally {
+        await p.$disconnect();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('antesDeAplicar recibe las pendientes y puede abortar sin tocar la base', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'onplay-mig-'));
     try {
@@ -176,6 +210,25 @@ conBase('aplicarMigraciones contra MariaDB local', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// R-021: `prisma migrate dev` en Windows (MariaDB con lower_case_table_names=1) escribe
+// `ALTER TABLE \`pago\`` en minúsculas aunque la tabla se creó como `Pago`; en la MariaDB de Linux
+// de Hostinger (sensible a mayúsculas) la migración falla. Toda referencia debe coincidir EXACTA.
+describe('las migraciones referencian las tablas con el mismo nombre con que se crearon (R-021)', () => {
+  it('ALTER TABLE / REFERENCES / ON usan nombres creados por CREATE TABLE, sensible a mayúsculas', () => {
+    const archivos = leerMigraciones(dirReal);
+    const creadas = new Set<string>();
+    const referencias: { migracion: string; nombre: string }[] = [];
+    for (const a of archivos) {
+      for (const m of a.sql.matchAll(/CREATE TABLE `([^`]+)`/g)) creadas.add(m[1]!);
+      for (const m of a.sql.matchAll(/(?:ALTER TABLE|REFERENCES|DROP TABLE|INSERT INTO|UPDATE|ON) `([^`]+)`/g)) {
+        if (m[1] !== '_prisma_migrations') referencias.push({ migracion: a.nombre, nombre: m[1]! });
+      }
+    }
+    const malas = referencias.filter((r) => !creadas.has(r.nombre)).map((r) => `${r.migracion}: ${r.nombre}`);
+    expect([...new Set(malas)]).toEqual([]);
   });
 });
 

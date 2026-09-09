@@ -1,8 +1,8 @@
 -- AlterTable
-ALTER TABLE `pago` MODIFY `medio` ENUM('efectivo', 'debito', 'credito', 'transferencia', 'mercadopago', 'otro', 'monedero') NOT NULL;
+ALTER TABLE `Pago` MODIFY `medio` ENUM('efectivo', 'debito', 'credito', 'transferencia', 'mercadopago', 'otro', 'monedero') NOT NULL;
 
 -- AlterTable
-ALTER TABLE `venta` ADD COLUMN `clienteId` VARCHAR(191) NULL;
+ALTER TABLE `Venta` ADD COLUMN `clienteId` VARCHAR(191) NULL;
 
 -- CreateTable
 CREATE TABLE `Cliente` (

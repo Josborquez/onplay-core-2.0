@@ -21,6 +21,7 @@ export interface FilaMigracion {
   finished_at: Date | null;
   rolled_back_at: Date | null;
   logs: string | null;
+  applied_steps_count: number | bigint;
 }
 
 export interface EstadoMigraciones {
@@ -142,7 +143,7 @@ const DDL_TABLA_MIGRACIONES =
   '`applied_steps_count` INT UNSIGNED NOT NULL DEFAULT 0, ' +
   'PRIMARY KEY (`id`)) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
 
-const SQL_FILAS = 'SELECT migration_name, checksum, finished_at, rolled_back_at, logs FROM `_prisma_migrations`';
+const SQL_FILAS = 'SELECT migration_name, checksum, finished_at, rolled_back_at, logs, applied_steps_count FROM `_prisma_migrations`';
 
 function urlConUnaConexion(url: string): string {
   // GET_LOCK, DDL y las filas de control deben ir por la MISMA conexión: pool de 1.
@@ -213,7 +214,21 @@ export async function aplicarMigraciones(op: OpcionesMigrador): Promise<Resultad
     if (Number(candado?.c) !== 1) throw new ErrorMigracion('otro proceso está migrando (no se obtuvo GET_LOCK en 60 s)');
     try {
       await prisma.$executeRawUnsafe(DDL_TABLA_MIGRACIONES);
-      const estado = clasificar(archivos, await leerFilas(prisma), directorio);
+      let filas = await leerFilas(prisma);
+      // Una migración que falló en su PRIMERA sentencia (0 pasos aplicados) no dejó nada a
+      // medias: cada sentencia DDL de MySQL es atómica por sí sola. Se marca revertida y se
+      // reintenta (p. ej. tras corregir el .sql, R-021). Con pasos > 0 sigue siendo reparación humana.
+      for (const f of filas) {
+        if (f.finished_at == null && f.rolled_back_at == null && Number(f.applied_steps_count) === 0) {
+          await prisma.$executeRawUnsafe(
+            "UPDATE `_prisma_migrations` SET rolled_back_at = UTC_TIMESTAMP(3), logs = CONCAT(IFNULL(logs, ''), ' | revertida automáticamente: 0 sentencias aplicadas') WHERE migration_name = ? AND finished_at IS NULL AND rolled_back_at IS NULL",
+            f.migration_name,
+          );
+          op.log?.warn({ migracion: f.migration_name, error: f.logs }, 'migración fallida sin sentencias aplicadas: se marca revertida y se reintenta');
+        }
+      }
+      filas = await leerFilas(prisma);
+      const estado = clasificar(archivos, filas, directorio);
       if (estado.fallidas.length > 0) {
         throw new ErrorMigracion(
           `la migración ${estado.fallidas[0]} quedó a medias (finished_at NULL). Repárela a mano y marque rolled_back_at o finished_at en _prisma_migrations`,

@@ -46,6 +46,8 @@ try {
   iniciarCronRespaldo(app.log); // 2.0 §5.6
   app.log.info({ version, ms: Date.now() - inicio, admin, semillas, migradas: mig.omitidas + mig.aplicadas.length }, 'onplay-core listo');
 } catch (err) {
-  app.log.fatal(err, err instanceof ErrorMigracion ? 'ARRANQUE DETENIDO: la migración falló y el proceso no escucha (10-SDD §5.1)' : 'ARRANQUE DETENIDO');
+  // El panel de Hostinger muestra solo `msg`: la causa va en el texto, no solo en el objeto.
+  const causa = err instanceof Error ? err.message : String(err);
+  app.log.fatal(err, err instanceof ErrorMigracion ? `ARRANQUE DETENIDO: la migración falló y el proceso no escucha (10-SDD §5.1): ${causa}` : `ARRANQUE DETENIDO: ${causa}`);
   process.exit(1);
 }
