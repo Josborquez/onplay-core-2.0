@@ -40,6 +40,7 @@
 | R-022 | 2026-09-09 | Despliegue 2.0 (Fase 4) | Producción en `core.onplaygames.cl` operativa (catálogos importados, respaldo, cron de cuenta); staging `core-staging.onplaygames.cl` como segunda Web App con base `u382410428_onplaystaging` | Hecho; queda conectar Git en el panel y los 7 días |
 | R-023 | 2026-09-09 | Despliegue 2.0 (staging) | Staging caía con «PANIC: timer has gone away» de Prisma: el cgroup LVE del usuario admite ~40 hilos en total y el motor (tokio) abre uno por CPU (64) | Corregido: `TOKIO_WORKER_THREADS=4` en ambos sitios y fijado por la app en `tz.ts`; diagnóstico con `/limites` de la app de prueba |
 | R-024 | 2026-09-09 | V12 Sincronización (revisión del dueño en staging) | «Engorroso, poco intuitivo, no se entiende qué hay que hacer»: nueve botones iguales por tienda, vocabulario de spec, interruptores que fallan por el candado, la carga de catálogo escondida | Corregido: V12 v2 «Tiendas web» guiada por la tarea del momento, tres bloques por tienda en lenguaje llano, confirmación en vez de simular, «Sistema» en su pantalla, marca de tiendas para el vendedor; admin y encargado |
+| R-025 | 2026-09-09 | Mostrador (grilla y lista) | El carro no deja agregar más unidades que las disponibles (R-014) pero la grilla y la lista no dejaban claro cuántas se pueden vender: la etiqueta decía «stock N» con el total de todas las ubicaciones, no lo vendible en mostrador | Corregido: `EtiquetaStock` muestra «quedan N» (ubicación de venta = tope del carro) y «· M en bodega» aparte, como insignia visible |
 
 ---
 
@@ -297,6 +298,12 @@
   6. **Marca para todos los roles** (`IndicadorTiendas` en la barra lateral, `useEstadoTiendas` cada 5 min): punto verde/rojo por tienda y «catálogo hace N min», desde `GET /canales/estado` (vendedor+, ping a la tienda con caché de 60 s).
 - **Roles en la API:** `GET/POST /sync/*` de E1 (importar, clientes, incremental, logs, estado, tareas) y `POST /sync/:canalId/pedidos` pasan a **encargado**; `PATCH /canales/:id` acepta encargado para `ingestaPedidos` y exige admin para `pushPrecio`/`pushStock` (403 `ROL_INSUFICIENTE`); precios, stock, adoptar y completa siguen admin. Ruta `/admin/sync` y menú: encargado+.
 - **Pendiente:** que el dueño la use en staging y diga qué falta antes de pasarla a `main`.
+
+### R-025 · La grilla y la lista no decían cuántas unidades se pueden vender
+
+- **Fecha:** 2026-09-09. **Estado:** Corregido (en staging). **Dónde se vio:** Mostrador en staging, revisión del dueño: «no se puede ingresar más producto en el carro que los existentes, hay que mostrar la cantidad en la grilla o en la lista».
+- **Qué pasaba:** el tope del carro (R-014) usa `stockVenta`, lo que hay en la ubicación de venta (`mostrador`). La etiqueta `EtiquetaStock` (grilla, lista de accesos rápidos y resultados del buscador) decía «stock N» con `stockTotal`, la suma de todas las ubicaciones, en texto gris pequeño. Si había 5 en total y 2 en mostrador, el vendedor leía «stock 5» y el «+» se apagaba en 2.
+- **Corrección (`components/base.tsx`):** la etiqueta pasa a insignia visible con borde y dice **«quedan N»** con N = `stockVenta` (exactamente el tope del carro), y si hay más en otras ubicaciones agrega «· M en bodega». Sin unidades en mostrador dice «sin stock aquí» en rojo (y «· M en bodega» si las hay, para que el encargado sepa que basta un traslado). El aviso de la web («agotado en la web» / «último en la web») se mantiene. Aplica a las tres vistas porque las tres usan el mismo componente.
 
 ---
 

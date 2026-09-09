@@ -335,12 +335,11 @@ export interface StockMostrable {
  */
 export function EtiquetaStock({ p, clase = '' }: { p: StockMostrable; clase?: string }) {
   if (!p.controlaStock || p.stockTotal == null || !p.estadoStock || p.estadoStock === 'sin_control') return null;
-  const tono =
-    p.estadoStock === 'negativo' || p.estadoStock === 'quiebre'
-      ? 'text-peligro'
-      : p.estadoStock === 'bajo'
-        ? 'text-alerta'
-        : 'text-lab3';
+  // R-025: el número que ve el vendedor es el que PUEDE vender (ubicación de venta), que es el
+  // mismo tope del carro (R-014). Lo que hay en otras ubicaciones se dice aparte, «en bodega».
+  const aqui = p.stockVenta ?? p.stockTotal;
+  const otras = Math.max(0, p.stockTotal - aqui);
+  const tono = aqui <= 0 ? 'text-peligro' : p.estadoStock === 'bajo' || p.estadoStock === 'negativo' ? 'text-alerta' : 'text-lab2';
   const web =
     p.stockCanalMin != null && p.stockCanalMin <= 0
       ? ' · agotado en la web'
@@ -348,8 +347,9 @@ export function EtiquetaStock({ p, clase = '' }: { p: StockMostrable; clase?: st
         ? ' · último en la web'
         : '';
   return (
-    <span className={`num text-chico ${tono} ${clase}`}>
-      {p.estadoStock === 'quiebre' ? 'sin stock' : `stock ${p.stockTotal}`}
+    <span className={`num inline-block rounded border border-sep bg-bg3 px-[6px] text-chico font-semibold ${tono} ${clase}`}>
+      {aqui <= 0 ? 'sin stock aquí' : `quedan ${aqui}`}
+      {otras > 0 ? ` · ${otras} en bodega` : ''}
       {web}
     </span>
   );
