@@ -36,6 +36,7 @@ Ver `.env.example` (todas comentadas). Reglas que importan en Hostinger (R-019):
 - **No poner `NODE_ENV` en el panel:** npm lo lee durante el `install` y omite las devDependencies, y el build falla. El runtime ya recibe `production` de la plataforma.
 - **`PORT` no existe** en la Web App: LiteSpeed Node escucha en un socket. La app usa 3010 por defecto y nunca falla por eso.
 - **`DATABASE_URL` con host `localhost`**; el host `srvNNNN.hstgr.io` del panel rechaza al usuario desde la Web App.
+- **`TOKIO_WORKER_THREADS=4`** (R-023): el usuario del hosting tiene unas pocas decenas de hilos para todos sus sitios y el motor de Prisma abre uno por CPU (64). La app lo fija sola si falta; no lo quites.
 - **Ningún secreto en `VITE_*`** (regla S3). La web usa rutas relativas `/api/v1`.
 
 ## Build y producción

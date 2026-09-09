@@ -300,6 +300,7 @@ Prueba «hola» (`docs/despliegue/prueba-webapp/`) desplegada en `core.onplaygam
 | `trustProxy` recibe `x-forwarded-proto: https`, `x-forwarded-for`, `x-real-ip`; la cookie `Secure; HttpOnly; SameSite=Strict` llega y vuelve | §5.8 confirmado; H7 se cumple |
 | `console.*` y pino JSON se ven en el panel y por API (fecha, nivel, mensaje; ventana de 1 mes) | §5.9: `stdout`; sin `LogApp` |
 | En el arranque se vieron **dos instancias** del proceso (dos sockets) | El candado del migrador (§5.3) y `abrirCorrida` son obligatorios, no defensivos |
+| **El cgroup LVE del usuario admite ~40 hilos en total** (R-023): el motor de Prisma abre uno por CPU (64) y el segundo sitio cae con «PANIC: timer has gone away» | §9:  en cada sitio; la app lo fija por defecto en  |
 | **Hay cron de cuenta** en el plan (comando + horario) | Habilita la opción B de §5.7 y la vigilancia sin servicio externo (P6) |
 
 **Estado de §14 tras la prueba:** #1 respondido (campos: framework, Node, raíz, salida, build, inicio, gestor; zip por TUS o Git); #2 no aplica (OnplayPOS no está desplegado; los datos reales son los de arriba); #3 respondido (logs por API, 1 mes; reinicios: la plataforma relanza el proceso si muere; no se apagó en 5,5 min de inactividad); #5 respondido (`$HOME`). **Quedan del dueño:** #4 dominio (todo indica `core.onplaygames.cl`), #6 cuántas Web Apps incluye Cloud Startup (staging necesita otra), #7 alcance, #8 rama, #9 GitHub vs zip.
