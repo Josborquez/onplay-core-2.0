@@ -23,6 +23,9 @@ import { entorno } from './entorno.js';
 
 export async function construirServidor() {
   const app = Fastify({
+    // La plataforma (LiteSpeed/hcdn) termina HTTPS y reenvía por socket con x-forwarded-*:
+    // sin esto req.protocol es http y la cookie `secure` del refresh nunca se emite (10-SDD §5.8).
+    trustProxy: true,
     logger: {
       level: process.env.LOG_LEVEL ?? (entorno.nodeEnv === 'production' ? 'info' : 'debug'),
     },
@@ -54,8 +57,8 @@ export async function construirServidor() {
   // cookie httpOnly SameSite=Strict funcione sin proxy. En dev lo hace Vite.
   if (entorno.nodeEnv === 'production') {
     const aqui = dirname(fileURLToPath(import.meta.url));
-    // Desde src/ (tsx) es ../../web/dist; desde dist/src/ (compilado) uno más.
-    const webDist = [resolve(aqui, '../../../web/dist'), resolve(aqui, '../../web/dist')].find(existsSync);
+    // Empaquetado (dist/servidor.mjs): dist/web está al lado. Desde la fuente (tsx, src/api): ../../dist/web.
+    const webDist = [resolve(aqui, 'web'), resolve(aqui, '../../dist/web')].find(existsSync);
     if (webDist) {
       await app.register(estaticos, { root: webDist });
       // SPA: cualquier GET que no sea de la API vuelve a index.html (React Router).
@@ -67,7 +70,7 @@ export async function construirServidor() {
       });
       app.log.info({ webDist }, 'sirviendo la web estática (producción)');
     } else {
-      app.log.warn({}, 'apps/web/dist no existe: la API corre sin la web (falta npm run build)');
+      app.log.warn({}, 'dist/web no existe: la API corre sin la web (falta npm run build)');
     }
   }
 

@@ -1,7 +1,7 @@
 /** Cristal OnPlay (05-SDD §4): todo color sale de un token CSS.
  * Tailwind solo referencia variables; ningún componente declara un color literal. */
 export default {
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: ['./index.html', './src/web/**/*.{ts,tsx}'],
   theme: {
     colors: {
       transparent: 'transparent',

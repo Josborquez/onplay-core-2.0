@@ -3,14 +3,20 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "sourceMap": true
-  }
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@onplay/dominio": ["src/dominio/index.ts"],
+      "@onplay/woo-client": ["src/woo/index.ts"]
+    }
+  },
+  "include": ["src/api", "src/dominio", "src/woo", "scripts", "prisma/seed.ts"]
 }
