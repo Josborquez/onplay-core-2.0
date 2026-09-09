@@ -1,7 +1,7 @@
 # SDD — onplay-core 2.0: despliegue como Web App Node.js de Hostinger
 ## Especificación ejecutable
 
-**Versión:** 0.9 (borrador para revisión del dueño) · **Fecha:** 2026-09-09 · **Estado:** **Fase 0 hecha el 2026-09-09** (prueba real en `core.onplaygames.cl`, ver §16: el entorno es viable y §16 corrige a §5.1, §5.2, §5.6, §5.7, §5.8, §6 y §9). Faltan las decisiones §14 #4, #6, #7, #8 y #9 antes de la Fase 1.
+**Versión:** 1.0 · **Fecha:** 2026-09-09 · **Estado:** **Fases 0–3 hechas el 2026-09-09; Fase 4 (despliegue) en curso.** §16 recoge lo verificado en el entorno real y **corrige** a §5.1, §5.2, §5.6, §5.7, §5.8, §6 y §9; los desvíos de implementación están en `08` R-020. Decisiones §14 del dueño (2026-09-09): #4 `core.onplaygames.cl`; #6 el plan incluye varias Web Apps; #7 solo reempaquetado (§2); #8/#9 repositorio nuevo `onplay-core-2.0` conectado por Git; base `u382410428_onplaycore`.
 **Documento rector:** `01-SDD-general.md` v1.2 (sigue vigente en todo lo que este documento no cambia).
 **Referencia de despliegue:** OnplayPOS v2 (`github.com/Josborquez/OnplayPOSv2`), que su documentación ubica en `onplaypos.onplaygames.cl`. **Ojo (R-019, 2026-09-09):** ese sitio no existe en la cuenta de Hostinger; lo que la spec toma de OnplayPOS son lecciones de sus intentos de build, no de una app en producción. Ver §16.
 
