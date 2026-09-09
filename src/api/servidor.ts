@@ -19,6 +19,7 @@ import rutasSincronizacion from './rutas/sincronizacion.js';
 import rutasCanales from './rutas/canales.js';
 import rutasTurnos from './rutas/turnos.js';
 import rutasVentas from './rutas/ventas.js';
+import rutasAdmin from './rutas/admin.js';
 import { entorno } from './entorno.js';
 
 export async function construirServidor() {
@@ -52,6 +53,7 @@ export async function construirServidor() {
   await app.register(rutasTurnos, { prefix: '/api/v1' });
   await app.register(rutasVentas, { prefix: '/api/v1' });
   await app.register(rutasClientes, { prefix: '/api/v1' });
+  await app.register(rutasAdmin, { prefix: '/api/v1' }); // 2.0 §5.5
 
   // Producción (P6, H7): el MISMO proceso sirve el build de la web para que la
   // cookie httpOnly SameSite=Strict funcione sin proxy. En dev lo hace Vite.

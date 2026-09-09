@@ -4,8 +4,8 @@ import { prisma } from '../db.js';
 import { entorno } from '../entorno.js';
 import type { SesionJwt } from '../plugins/auth.js';
 
-function publicoUsuario(u: { id: string; nombre: string; email: string; rol: string }) {
-  return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol };
+function publicoUsuario(u: { id: string; nombre: string; email: string; rol: string; debeCambiarClave?: boolean }) {
+  return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol, debeCambiarClave: u.debeCambiarClave ?? false };
 }
 
 // H7 (05-SDD §14): el refresh token viaja en cookie httpOnly + SameSite=Strict,
@@ -101,4 +101,43 @@ export default async function rutasAuth(app: FastifyInstance) {
     if (!usuario) return reply.code(401).send({ error: 'NO_AUTENTICADO' });
     return publicoUsuario(usuario);
   });
+
+  // 2.0 §5.4: cambio de clave del propio usuario. Obligatorio tras entrar con la clave del
+  // entorno (debeCambiarClave); disponible siempre. Auditado como `editar` sobre usuario.
+  app.post<{ Body: { actual: string; nueva: string } }>(
+    '/auth/cambiar-clave',
+    {
+      preHandler: app.requiereRol('vendedor'),
+      schema: {
+        body: {
+          type: 'object',
+          required: ['actual', 'nueva'],
+          properties: { actual: { type: 'string', minLength: 1 }, nueva: { type: 'string', minLength: 8, maxLength: 200 } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const usuario = await prisma.usuario.findUnique({ where: { id: req.user.sub } });
+      if (!usuario || !usuario.activo) return reply.code(401).send({ error: 'NO_AUTENTICADO' });
+      const valida = await argon2.verify(usuario.passwordHash, req.body.actual).catch(() => false);
+      if (!valida) return reply.code(422).send({ error: 'CLAVE_ACTUAL_INVALIDA' });
+      if (req.body.actual === req.body.nueva) return reply.code(422).send({ error: 'CLAVE_REPETIDA' });
+      const passwordHash = await argon2.hash(req.body.nueva, { type: argon2.argon2id });
+      const actualizado = await prisma.$transaction(async (tx) => {
+        const u = await tx.usuario.update({ where: { id: usuario.id }, data: { passwordHash, debeCambiarClave: false } });
+        await tx.auditoria.create({
+          data: {
+            usuarioId: usuario.id,
+            entidad: 'usuario',
+            entidadId: usuario.id,
+            accion: 'editar',
+            valorAnterior: { debeCambiarClave: usuario.debeCambiarClave },
+            valorNuevo: { clave: 'cambiada', debeCambiarClave: false },
+          },
+        });
+        return u;
+      });
+      return publicoUsuario(actualizado);
+    },
+  );
 }

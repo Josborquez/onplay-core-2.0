@@ -7,6 +7,7 @@ import { BarraLateral } from './components/BarraLateral.js';
 import { RequiereRol } from './components/RequiereRol.js';
 import { Cargando } from './components/base.js';
 import { Cliente } from './pantallas/Cliente.js';
+import { CambiarClave } from './pantallas/CambiarClave.js';
 import { Entrar } from './pantallas/Entrar.js';
 import { MisVentas } from './pantallas/MisVentas.js';
 import { Mostrador } from './pantallas/Mostrador.js';
@@ -67,6 +68,8 @@ function Armazon({ children }: { children: ReactNode }) {
 
   if (cargando) return <Cargando texto="Un momento…" />;
   if (!usuario) return <Navigate to="/entrar" replace />;
+  // 2.0 §5.4: la clave del entorno es de un solo uso; nada se usa hasta cambiarla.
+  if (usuario.debeCambiarClave) return <CambiarClave />;
 
   return (
     <div

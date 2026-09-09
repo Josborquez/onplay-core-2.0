@@ -15,6 +15,8 @@ interface Sesion {
   vencida: boolean;
   entrar: (email: string, password: string) => Promise<void>;
   salir: () => Promise<void>;
+  /** Reemplaza el usuario en memoria (p. ej. tras cambiar la clave, 2.0 §5.4). */
+  actualizarUsuario: (u: Usuario) => void;
 }
 
 const Contexto = createContext<Sesion | null>(null);
@@ -46,7 +48,11 @@ export function ProveedorSesion({ children }: { children: ReactNode }) {
     setUsuario(null);
   }, []);
 
-  return <Contexto.Provider value={{ usuario, cargando, vencida, entrar, salir }}>{children}</Contexto.Provider>;
+  const actualizarUsuario = useCallback((u: Usuario) => setUsuario(u), []);
+
+  return (
+    <Contexto.Provider value={{ usuario, cargando, vencida, entrar, salir, actualizarUsuario }}>{children}</Contexto.Provider>
+  );
 }
 
 export function useSesion(): Sesion {

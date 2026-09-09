@@ -21,6 +21,8 @@ import {
   type TipoCorrida,
 } from '../../tiposSync.js';
 import { Encabezado, Paginacion } from './util.js';
+import { Sistema } from './Sistema.js';
+import { useSesion } from '../../sesion.js';
 
 const CANALES = [
   { id: 'onplay_cl', nombre: 'onplay.cl' },
@@ -80,6 +82,7 @@ function esResumen(x: ResumenCorrida | { omitida: string }): x is ResumenCorrida
 }
 
 export function Sync() {
+  const { usuario } = useSesion();
   const enLinea = useEnLinea();
   const [canales, setCanales] = useState<RespuestaCanales | null>(null);
   const [estado, setEstado] = useState<EstadoSync | null>(null);
@@ -452,6 +455,7 @@ export function Sync() {
           )}
         </>
       )}
+      {usuario ? <Sistema usuarioActualId={usuario.id} /> : null}
     </div>
   );
 }

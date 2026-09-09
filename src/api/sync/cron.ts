@@ -7,10 +7,18 @@ import { entorno } from '../entorno.js';
 import { CANALES_WOO, sincronizarIncremental, type CanalWoo } from './importador.js';
 import { ErrorCorrida } from './corridas.js';
 import { correrCompleta } from './completa.js';
+import { generarRespaldo } from '../arranque/respaldo.js';
 
 let corriendo = false;
 
+// 2.0 §5.7: último tick de cualquier cron en este proceso (lo expone /salud como `ultimoCronEn`).
+let ultimoTick: Date | null = null;
+export function ultimoCronEn(): Date | null {
+  return ultimoTick;
+}
+
 export async function correrIncrementales(log: { info: (o: unknown, m?: string) => void; error: (o: unknown, m?: string) => void }): Promise<void> {
+  ultimoTick = new Date();
   if (corriendo) return; // una corrida a la vez
   corriendo = true;
   try {
@@ -57,6 +65,7 @@ type Log = { info: (o: unknown, m?: string) => void; warn: (o: unknown, m?: stri
 let corriendoCompleta = false;
 
 export async function correrCompletas(log: Log): Promise<void> {
+  ultimoTick = new Date();
   if (corriendoCompleta) return;
   corriendoCompleta = true;
   try {
@@ -100,4 +109,21 @@ export function iniciarCronCompleta(log: Log): void {
   }
   cron.schedule(entorno.syncCronCompleta, () => void correrCompletas(log));
   log.info({ cron: entorno.syncCronCompleta }, 'cron de corrida completa programado (E3 §6.4)');
+}
+
+// ─── 2.0 §5.6: respaldo lógico diario (hora Chile) ─────────────────────────────
+export function iniciarCronRespaldo(log: Log): void {
+  if (!entorno.respaldoCron) {
+    log.info({}, 'respaldo automático desactivado (RESPALDO_CRON vacío)');
+    return;
+  }
+  cron.schedule(
+    entorno.respaldoCron,
+    () => {
+      ultimoTick = new Date();
+      void generarRespaldo({ motivo: 'diario', log }).catch((e) => log.error(e, 'respaldo diario falló'));
+    },
+    { timezone: 'America/Santiago' },
+  );
+  log.info({ cron: entorno.respaldoCron, dir: entorno.respaldoDir, retencion: entorno.respaldoRetencion }, 'cron de respaldo programado (2.0 §5.6)');
 }

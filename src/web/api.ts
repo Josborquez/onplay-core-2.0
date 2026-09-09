@@ -6,6 +6,13 @@ export interface Usuario {
   nombre: string;
   email: string;
   rol: 'vendedor' | 'encargado' | 'admin';
+  /** 2.0 §5.4: entró con la clave de un solo uso del entorno; no puede usar el sistema hasta cambiarla. */
+  debeCambiarClave?: boolean;
+}
+
+/** 2.0 §5.4: cambia la clave del usuario en sesión y devuelve el usuario actualizado. */
+export async function cambiarClave(actual: string, nueva: string): Promise<Usuario> {
+  return api<Usuario>('/auth/cambiar-clave', { method: 'POST', body: JSON.stringify({ actual, nueva }) });
 }
 
 export class ErrorApi extends Error {

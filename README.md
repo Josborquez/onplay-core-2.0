@@ -1,141 +1,104 @@
-# onplay-core
+# onplay-core 2.0
 
-Sistema POS/ERP de Comercializadora y Distribuidora BM: fuente de verdad única de productos, precios, ventas y caja, por encima de las dos tiendas WooCommerce existentes (onplay.cl y onplaygames.cl), que no se reemplazan.
+Sistema POS/ERP de Comercializadora y Distribuidora BM: fuente de verdad única de productos, precios, inventario, clientes y ventas, por encima de las dos tiendas WooCommerce existentes (onplay.cl y onplaygames.cl), que no se reemplazan.
+
+**2.0 = la misma 1.x (Etapas 1–4 completas) empaquetada para correr como Web App Node.js de Hostinger**, sin VPS, sin shell y sin pm2: un solo paquete, un solo archivo de servidor (`dist/servidor.mjs`), arranque autosuficiente (migra, siembra, crea el admin inicial y escucha), tareas administrativas como endpoints y respaldo desde la propia app. Spec: `docs/10-SDD-onplay-core-2.0-web-app.md` (con §16, lo verificado en el entorno real, y `docs/08` R-019/R-020).
 
 - Documento rector: `docs/01-SDD-general.md`
-- Spec ejecutable de la Etapa 1 (mostrador): `docs/02-SDD-etapa1-mostrador.md`
-- Diseño de interfaz vinculante: `docs/05-SDD-diseno-interfaz-etapa1_1.md`
+- Specs por etapa: `02` (mostrador), `03` (inventario), `06` (sincronización), `07` (cliente y monedero), `05` (diseño de interfaz)
 - Guía para agentes de código: `CLAUDE.md`
 
-**En Etapa 1 el sistema es de solo lectura hacia WooCommerce**: el candado `SYNC_SOLO_LECTURA=true` hace que `packages/woo-client` lance una excepción ante cualquier `POST`/`PUT`/`DELETE` a las tiendas. Cambiarlo es una decisión de la Etapa 3.
+**Hacia WooCommerce el sistema es de solo lectura** mientras `SYNC_SOLO_LECTURA=true` (candado de E1; abrirlo es la Fase 0 de E3).
 
 ## Requisitos
 
-- Node.js ≥ 20 (probado con 22)
-- MySQL 8 (en desarrollo sirve MariaDB de XAMPP)
-- npm (workspaces; no se usa pnpm/yarn)
+- Node.js ≥ 22
+- MySQL 8 o MariaDB ≥ 10.4 (en desarrollo, MariaDB de XAMPP; en Hostinger, MariaDB 11.8)
+- npm (un solo paquete, sin workspaces)
 
 ## Instalación (desarrollo)
 
 ```bash
-git clone <repo> onplay-core && cd onplay-core
-npm install
-cp apps/api/.env.example apps/api/.env   # o crear el .env a mano (ver abajo)
-cd apps/api
-npx prisma migrate dev                    # crea la base y aplica migraciones
-cd ../..
-npm run seed                              # canales, categorías, correlativo (idempotente)
-npm run crear-admin -- admin@onplay.cl "Admin" <password>
-npm run dev                               # API en :3010
-npm run dev -w @onplay/web                # Vite en :5183 con proxy /api → :3010
+git clone <repo> onplay-core-2.0 && cd onplay-core-2.0
+npm install                 # postinstall: prisma generate
+cp .env.example .env        # DATABASE_URL local, JWT_SECRET, claves ck_/cs_ (opcionales)
+npx prisma migrate dev      # crea la base y aplica migraciones (solo en desarrollo)
+npm run dev                 # API en :3010 (tsx watch). Al arrancar migra, siembra y crea el admin inicial
+npm run dev:web             # Vite en :5183 con proxy /api → :3010
 ```
 
-La web en desarrollo se usa desde `http://localhost:5183` (mismo origen que la API vía proxy: la cookie de sesión es `SameSite=Strict`).
+El primer arranque con `ADMIN_INICIAL_EMAIL` y `ADMIN_INICIAL_PASSWORD` en el `.env` crea el admin; esa clave es de un solo uso y la pantalla de entrada obliga a cambiarla. Sin usuarios y sin esas variables, `/salud` responde `sin_usuarios`.
 
-## Variables de entorno (`apps/api/.env`)
+## Variables de entorno
 
-```env
-NODE_ENV=production
-PORT=3010
-DATABASE_URL="mysql://usuario:clave@localhost:3306/onplay_core"
-TZ=UTC
+Ver `.env.example` (todas comentadas). Reglas que importan en Hostinger (R-019):
 
-JWT_SECRET=<cadena aleatoria de 64+ caracteres>
-JWT_EXPIRA=8h
-REFRESH_EXPIRA=30d
+- **No poner `NODE_ENV` en el panel:** npm lo lee durante el `install` y omite las devDependencies, y el build falla. El runtime ya recibe `production` de la plataforma.
+- **`PORT` no existe** en la Web App: LiteSpeed Node escucha en un socket. La app usa 3010 por defecto y nunca falla por eso.
+- **`DATABASE_URL` con host `localhost`**; el host `srvNNNN.hstgr.io` del panel rechaza al usuario desde la Web App.
+- **Ningún secreto en `VITE_*`** (regla S3). La web usa rutas relativas `/api/v1`.
 
-# WooCommerce — SOLO LECTURA en Etapa 1
-WOO_ONPLAY_URL=https://onplay.cl
-WOO_ONPLAY_CK=ck_xxxxxxxx
-WOO_ONPLAY_CS=cs_xxxxxxxx
-WOO_ONPLAYGAMES_URL=https://onplaygames.cl
-WOO_ONPLAYGAMES_CK=ck_xxxxxxxx
-WOO_ONPLAYGAMES_CS=cs_xxxxxxxx
-
-SYNC_HABILITADO=true
-SYNC_CRON="*/30 * * * *"
-SYNC_SOLO_LECTURA=true      # candado de la Etapa 1; se abre en la Fase 0 de E3 (con claves de ESCRITURA y respaldo)
-
-# Etapa 3 — sincronización bidireccional (06-SDD §11)
-SYNC_CRON_COMPLETA="*/15 * * * *"   # pedidos → precios → stock, solo canales con algún interruptor encendido
-SYNC_LOTE=50
-SYNC_CONCURRENCIA=4
-SYNC_UBICACION_ONLINE=bodega        # de dónde descuenta una venta online
-SYNC_VENTANA_INGESTA_MIN=20         # antigüedad máxima de la ingesta para permitir el push de stock
-ALERTA_DISCREPANCIAS=25             # RS4: por encima se apaga pushStock del canal (queda en Auditoría)
-
-CORS_ORIGINS=               # vacío en producción same-origin; lista separada por comas si aplica
-```
-
-Reglas:
-
-- **Ningún secreto va en variables `VITE_*`** (regla S3): Vite las incrusta en texto plano en el bundle. La web no necesita ninguna variable — usa rutas relativas `/api/v1`.
-- Los canales sin credenciales (`WOO_*` vacías) simplemente se saltan en la sincronización.
-
-## Despliegue (producción)
-
-Un solo proceso Node sirve la API **y** la web compilada (mismo origen, requisito de la cookie de sesión). Procedimiento:
+## Build y producción
 
 ```bash
-git pull
-npm ci
-npm run build                             # typecheck de la API + build de la web (apps/web/dist)
-cd apps/api && npx prisma migrate deploy && cd ../..
-pm2 reload onplay-core
-# primera vez (desde apps/api/): pm2 start npm --name onplay-core -- run start
+npm run build     # tsc (API y web) + vite → dist/web + esbuild → dist/servidor.mjs + dist/migrations
+npm start         # node dist/servidor.mjs
+npm test          # vitest: dominio, woo-client, API y el migrador (contra la MariaDB local si hay DATABASE_URL)
 ```
 
-El proceso corre con `tsx` (los packages del monorepo se consumen desde su fuente TypeScript, sin builds intermedios); `npm run build` queda como puerta de typecheck y para generar `apps/web/dist`.
+### Web App de Hostinger (verificado en `core.onplaygames.cl`)
 
-Con `NODE_ENV=production` la API sirve `apps/web/dist` en `/` (con fallback SPA a `index.html`) y el cron de sincronización incremental corre cada 30 minutos dentro del mismo proceso.
-
-La guía completa para un VPS de Hostinger (instalación inicial, Nginx con HTTPS, pm2, respaldo diario y script de actualización) está en [`docs/despliegue/`](docs/despliegue/README.md). Requiere VPS: el hosting compartido no ejecuta Node.
-
-## Comandos útiles
-
-| Comando | Qué hace |
+| Campo del panel | Valor |
 |---|---|
-| `npm run dev` | API en `:3010` con recarga (tsx watch) |
-| `npm run dev -w @onplay/web` | Web en `:5183` (Vite + proxy) |
-| `npm run build` | Compila API y web |
-| `npm test` | Tests de reglas de negocio (vitest) |
-| `npm run seed` | Semillas idempotentes |
-| `npm run crear-admin -- <email> <nombre> [password]` | Primer usuario admin |
+| Framework | Fastify |
+| Versión de Node | 22 |
+| Directorio raíz | `.` |
+| Directorio de salida | `.` (con `dist` el proceso no arranca) |
+| Comando de build | `build` |
+| Archivo de inicio | `dist/servidor.mjs` |
+| Gestor de paquetes | npm |
 
-## Etapa 2 — Inventario (2026-09-02)
+Fuente: repositorio Git conectado en el panel (cada push a `main` despliega) o zip subido a `public_html`. Variables de entorno desde el panel (sección Web App). Al arrancar, el proceso:
 
-Spec: `docs/03-SDD-etapa2-inventario.md`. Guía para el encargado: `docs/09-guia-inventario-encargado.md`.
+1. lee el entorno (falta `DATABASE_URL` o `JWT_SECRET` → sale con código 1 y mensaje claro);
+2. **migra** con el migrador propio (`src/api/arranque/migrador.ts`): aplica los `migration.sql` de Prisma con el cliente de consultas sobre la misma tabla `_prisma_migrations`, con candado `GET_LOCK` y **respaldo automático previo** si hay pendientes; si una migración falla, el proceso **no escucha**;
+3. siembra (idempotente) y crea el admin inicial si no hay usuarios activos;
+4. aborta corridas de sync colgadas, escucha y programa los crons (incremental, completa, respaldo diario 03:00 Chile).
 
-- **Libro de stock** append-only (`MovimientoStock`) con resumen `StockActual` por producto y ubicación; el resumen solo lo escribe `apps/api/src/stock/libro.ts` (candado `FOR UPDATE`).
-- **Ubicaciones** semilla: `mostrador` (de venta), `carpetas`, `vitrina`, `bodega` (publicable para E3). `npm run seed` las crea.
-- **La venta descuenta** de la ubicación de venta los productos con `controlaStock`; nunca bloquea por stock propio (advierte `STOCK_NEGATIVO`). Regla de prioridad entre canales (03 §6.9): si la web ya vendió y cobró la última unidad, el cobro responde `409 RESERVADO_WEB`; un encargado puede seguir con `forzarReservado.nota`.
-- **Recuentos** (`/admin/recuentos`): por ubicación y categoría, escáner que suma 1, cerrar enciende el control solo en lo contado.
-- **Movimientos manuales** (`/admin/stock`): ajuste, merma, ingreso y traslado con nota obligatoria. **Alertas** (`/admin/stock/alertas`) y **CSV**.
-- **Espejo del stock de la web** (`ProductoCanal.stockCanal`) lo llena el mismo sync de E1; es solo lectura y nunca se suma al stock propio.
-- **Devoluciones** con folio `D-año-#####` desde `/admin/ventas` (salen de la caja abierta del encargado) y **movimientos de caja** (`Caja ±` en el Mostrador); ambos entran al arqueo.
+`/salud` (público, < 200 ms, no consulta las tiendas): `{ estado: ok|sin_usuarios|migraciones|error, migraciones: alDia|pendientes|fallidas, usuarios, version, ultimoCronEn, ultimaCorridaEn }`. Un **cron de cuenta** de Hostinger que pida `/salud` cada 5 minutos mantiene el proceso despierto y vigila.
 
-Rutas nuevas bajo `/api/v1`: `ubicaciones`, `stock`, `stock/alertas`, `stock/export.csv`, `stock/movimientos`, `stock/traslados`, `stock/verificar`, `productos/:id/stock`, `productos/:id/movimientos`, `recuentos*`, `ventas/:id/devoluciones`, `devoluciones`, `turnos/:id/movimientos-caja`.
+### Operación sin shell (`/admin/sync` → sección «Sistema», solo admin)
 
-## Etapa 3 — Sincronización bidireccional (2026-09-03)
+| Antes (comando) | Ahora |
+|---|---|
+| `prisma migrate status` | `GET /api/v1/admin/migraciones` |
+| `npm run seed` | automático al arrancar; `POST /api/v1/admin/sembrar` |
+| `npm run crear-admin` | admin inicial por entorno; `POST /api/v1/admin/usuarios` (crear, activar/desactivar) |
+| `npm run renumerar-ind` | `POST /api/v1/admin/renumerar-ind?dryRun=true` |
+| `mysqldump` | `POST /api/v1/admin/respaldo` → `.sql.gz` en `$HOME/onplay-respaldos` (retención 7); `GET /api/v1/admin/respaldos/:id` descarga |
 
-Spec: `docs/06-SDD-etapa3-sincronizacion.md`. El maestro escribe precio y stock en los sitios y lee sus pedidos. Construida en local; **antes de encender el push en producción** hacen falta claves `ck_/cs_` con permiso de escritura, `SYNC_SOLO_LECTURA=false`, un respaldo de ambos sitios restaurado en un entorno de prueba y staging (06 §9 Fase 0). Mientras el candado esté puesto, encender `pushPrecio`/`pushStock` responde `422 CANDADO_SOLO_LECTURA`.
+**Segunda copia fuera de Hostinger:** descargar el respaldo semanal desde el backoffice. Restaurar: `mysql -u usuario -p base < archivo.sql` o importar en phpMyAdmin (el archivo trae `DROP/CREATE + INSERT` con `FOREIGN_KEY_CHECKS=0`).
 
-- **Interruptores por canal** (`/admin/sync`, solo admin): ingesta de pedidos → publicar precio → publicar stock, en ese orden. Publicar stock exige la ingesta encendida. Toda corrida **simula por defecto**; escribir exige `?dryRun=false` o el botón «Publicar».
-- **Ingesta de pedidos** (E3c): pedidos `processing`/`completed` del canal → `PedidoCanal` con líneas mapeadas a productos, descuento `venta_online` en la ubicación online (`bodega`). Un pedido pagado sin stock deja el libro en negativo y abre `pedido_sin_stock` (R-016). Pedidos cancelados o reembolsados después → `pedido_anulado`; nunca se revierte solo.
-- **Push de precio** (E3a): escribe `regular_price`; **nunca toca productos en oferta** (`precio_en_oferta`). Publicación a demanda al cambiar un precio en `/admin/productos`.
-- **Push de stock** (E3b): verificación previa contra lo último publicado (regla S2): si el canal cambió por fuera del maestro, **no se escribe** y queda `stock_derivado` con los tres números. Solo entran productos con `controlaStock`. Antes de encenderlo: **Adoptar stock del canal** (punto de partida).
-- **Discrepancias** (`/admin/discrepancias`, encargado+): tarjetas por tipo con maestro · canal · publicado y tres acciones con su consecuencia escrita («El canal tiene razón» = ajuste en inventario; «El maestro tiene razón» = escribe en el canal, solo admin; «Descartar»). **Pedidos online** (`/admin/pedidos`): líneas sin producto se vinculan a mano.
-- **Seguridad:** cerrojo por canal y tipo de corrida (`409 CORRIDA_EN_CURSO`), barrido de arranque, PUT acotado a `regular_price`/`stock_quantity`, corte RS4 (más de `ALERTA_DISCREPANCIAS` accionables → se apaga `pushStock`), reintento acotado a los fallidos (`?soloErrores=true`), purga de detalle de corridas a 90 días.
+Los scripts de desarrollo siguen existiendo: `npm run seed`, `npm run crear-admin -- <email> <nombre> [password]`, `npm run renumerar-ind -- [--aplicar]`.
 
-Rutas nuevas bajo `/api/v1`: `canales`, `sync/:canalId/pedidos|precios|stock|adoptar|completa`, `sync/corridas[/:id]`, `sync/pedidos`, `sync/pedidos/:pedidoId/lineas/:lineaId/mapear`, `sync/discrepancias[/:id]`, `sync/discrepancias/:id/resolver`, `productos/:id/publicar`.
+La alternativa VPS (Nginx + pm2 + `prisma migrate deploy`) queda documentada en [`docs/despliegue/`](docs/despliegue/README.md) y sigue funcionando con `npm start`.
+
+## Etapas de negocio
+
+- **E1 Mostrador** (`docs/02`): catálogo desde las tiendas, venta y caja, PWA offline, backoffice.
+- **E2 Inventario** (`docs/03`, guía `docs/09`): libro de stock append-only, recuentos, alertas, devoluciones, movimientos de caja. Regla R-014: el stock nunca queda negativo.
+- **E3 Sincronización bidireccional** (`docs/06`): ingesta de pedidos, push de precio y de stock con verificación previa, discrepancias. Producción exige la Fase 0 del dueño (claves de escritura, candado, respaldo, staging).
+- **E4 Cliente y monedero** (`docs/07`): clientes en el mostrador, saldo como `SUM()`, vinculación con las cuentas de las tiendas. Fase 5 (crédito y fusión) bloqueada hasta aprobación.
 
 ## Estructura
 
 ```
-apps/api          Fastify + Prisma (rutas /api/v1, sync, cron incremental)
-apps/web          PWA React (mostrador + backoffice, un solo bundle)
-packages/dominio  Reglas de negocio puras (venta, arqueo, SKU, duplicados) + tests
-packages/woo-client  Cliente tipado wc/v3 con el candado de solo lectura
-prisma/           Esquema y migraciones (apuntado desde apps/api)
-docs/             SDDs vinculantes
+src/api        Fastify + Prisma: rutas /api/v1, sync, stock, arranque/ (migrador, semillas, admin inicial, respaldo)
+src/dominio    Reglas de negocio puras + tests (alias @onplay/dominio)
+src/woo        Cliente tipado wc/v3 con el candado de solo lectura (alias @onplay/woo-client)
+src/web        PWA React (mostrador + backoffice, un solo bundle)
+prisma/        Esquema y migraciones (el migrador las lee de dist/migrations en producción)
+scripts/       Utilidades de desarrollo (crear-admin, renumerar-ind)
+docs/          SDDs vinculantes, bitácora (08) y app de prueba de la Fase 0 (despliegue/prueba-webapp)
+dist/          Salida del build (no versionada): servidor.mjs, web/, migrations/
 ```

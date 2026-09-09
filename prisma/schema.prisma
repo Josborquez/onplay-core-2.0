@@ -214,6 +214,8 @@ model Usuario {
   passwordHash String
   rol          RolUsuario @default(vendedor)
   activo       Boolean    @default(true)
+  // 2.0 §5.4: el admin inicial nace con la clave del entorno y debe cambiarla al primer inicio de sesión.
+  debeCambiarClave Boolean @default(false)
   creadoEn     DateTime   @default(now())
 
   turnos                 TurnoCaja[]

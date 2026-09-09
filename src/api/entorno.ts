@@ -8,8 +8,20 @@ function requerida(nombre: string): string {
 
 export const entorno = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
+  // En la Web App de Hostinger PORT no existe (LiteSpeed Node escucha en un socket, R-019):
+  // opcional con default, nunca motivo de salida.
   puerto: Number(process.env.PORT ?? 3010),
+  // Prisma la lee sola, pero se exige aquí para que el panel muestre un error claro (§5.1 paso 1).
+  databaseUrl: requerida('DATABASE_URL'),
   jwtSecret: requerida('JWT_SECRET'),
+  // 2.0 §5.4 — solo se usan si no hay ningún usuario activo.
+  adminInicialEmail: process.env.ADMIN_INICIAL_EMAIL ?? '',
+  adminInicialPassword: process.env.ADMIN_INICIAL_PASSWORD ?? '',
+  // 2.0 §5.6 — respaldo lógico desde la app: hora Chile; vacío desactiva el automático.
+  respaldoCron: process.env.RESPALDO_CRON ?? '0 3 * * *',
+  respaldoRetencion: Number(process.env.RESPALDO_RETENCION ?? 7),
+  // Fuera del árbol de la versión desplegada: $HOME es el directorio del dominio y persiste (R-019).
+  respaldoDir: process.env.RESPALDO_DIR ?? (process.env.HOME ? `${process.env.HOME}/onplay-respaldos` : 'respaldos'),
   jwtExpira: process.env.JWT_EXPIRA ?? '8h',
   refreshExpira: process.env.REFRESH_EXPIRA ?? '30d',
   corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').filter(Boolean),

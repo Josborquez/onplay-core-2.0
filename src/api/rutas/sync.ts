@@ -6,11 +6,14 @@ import { prisma } from '../db.js';
 import { entorno } from '../entorno.js';
 import { CANALES_WOO, importarCanal, sincronizarIncremental, type CanalWoo } from '../sync/importador.js';
 import { importarClientesCanal } from '../sync/clientes.js';
+import { iniciarTarea, listarTareas, obtenerTarea } from '../sync/tareas.js';
 
 export default async function rutasSync(app: FastifyInstance) {
   const soloAdmin = { preHandler: app.requiereRol('admin') };
 
-  app.post<{ Params: { canalId: string }; Querystring: { dryRun?: string } }>(
+  // 2.0 §5.8: con ?segundoPlano=true responde 202 con `tareaId` y la importación sigue en el
+  // proceso (el borde corta a ~55 s); el resultado se consulta en GET /sync/tareas/:id.
+  app.post<{ Params: { canalId: string }; Querystring: { dryRun?: string; segundoPlano?: string } }>(
     '/sync/:canalId/importar',
     soloAdmin,
     async (req, reply) => {
@@ -19,6 +22,10 @@ export default async function rutasSync(app: FastifyInstance) {
         return reply.code(404).send({ error: 'CANAL_DESCONOCIDO' });
       }
       const dryRun = req.query.dryRun !== 'false';
+      if (req.query.segundoPlano === 'true') {
+        const tarea = iniciarTarea(`importar:${canalId}${dryRun ? ':simulacion' : ''}`, req.user.sub, () => importarCanal(canalId, { dryRun }));
+        return reply.code(202).send({ tareaId: tarea.id, tipo: tarea.tipo, estado: tarea.estado });
+      }
       try {
         return await importarCanal(canalId, { dryRun });
       } catch (e) {
@@ -51,6 +58,14 @@ export default async function rutasSync(app: FastifyInstance) {
       }
     },
   );
+
+  // 2.0 §5.8: estado de las tareas en segundo plano de este proceso.
+  app.get('/sync/tareas', soloAdmin, async () => ({ tareas: listarTareas() }));
+  app.get<{ Params: { id: string } }>('/sync/tareas/:id', soloAdmin, async (req, reply) => {
+    const t = obtenerTarea(req.params.id);
+    if (!t) return reply.code(404).send({ error: 'TAREA_DESCONOCIDA', detalle: 'la tarea no existe o el proceso se reinició; revisa la bitácora de sync' });
+    return t;
+  });
 
   // Corrida incremental manual (§6.5): la misma que dispara el cron cada 30 min.
   app.post<{ Params: { canalId: string } }>(
