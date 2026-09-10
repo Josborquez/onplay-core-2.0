@@ -13,7 +13,7 @@ import { Banner, Boton, Campo, CampoMonto } from '../../components/base.js';
 import { aplanarCategorias, Encabezado, Selecto, type OpcionCategoria } from './util.js';
 
 /** Raíz del árbol de categorías → tipo del producto (02-SDD §6.3). */
-const TIPO_POR_RAIZ: Record<string, TipoProducto> = {
+export const TIPO_POR_RAIZ: Record<string, TipoProducto> = {
   snacks: 'snack',
   accesorios: 'accesorio',
   sellado: 'sellado',

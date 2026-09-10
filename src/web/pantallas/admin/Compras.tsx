@@ -5,7 +5,10 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ErrorApi, api } from '../../api.js';
 import { Banner, Boton, Campo, CampoMonto, Cargando, Dialogo, Insignia, Vacio } from '../../components/base.js';
+import { categorias, refrescarCatalogo } from '../../catalogo.js';
 import { clp, fecha } from '../../utils/formato.js';
+import type { TipoProducto } from '../../tipos.js';
+import { TIPO_POR_RAIZ } from './AltaSnack.js';
 import {
   ETIQUETA_ESTADO_COMPRA,
   ETIQUETA_TIPO_DOC,
@@ -21,7 +24,7 @@ import {
   type ResultadoBusquedaProducto,
   type TipoDocumentoCompra,
 } from '../../tiposCompras.js';
-import { Encabezado, Paginacion, Selecto } from './util.js';
+import { aplanarCategorias, Encabezado, Paginacion, Selecto, type OpcionCategoria } from './util.js';
 
 interface Ubicacion {
   id: string;
@@ -128,6 +131,7 @@ interface ObjetivoVincular {
   bultos: number;
   sueltas: number;
   unidadesPorBulto: number;
+  totalLinea: number;
   productoActual: ResultadoBusquedaProducto | null;
 }
 
@@ -146,6 +150,13 @@ function DialogoVincular({
   const [upb, setUpb] = useState<number | ''>(1);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
+  // «Crear producto» (pedido del dueño 2026-09-10): alta inline con los 4 campos de V6.
+  const [creando, setCreando] = useState(false);
+  const [opcionesCategoria, setOpcionesCategoria] = useState<OpcionCategoria[]>([]);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevaCategoria, setNuevaCategoria] = useState('');
+  const [nuevoPrecio, setNuevoPrecio] = useState<number | ''>('');
+  const [nuevoCodigo, setNuevoCodigo] = useState('');
 
   useEffect(() => {
     if (!objetivo) return;
@@ -155,7 +166,22 @@ function DialogoVincular({
     setUpb(objetivo.unidadesPorBulto);
     setResultados([]);
     setError('');
+    setCreando(false);
+    setNuevoNombre(objetivo.descripcion);
+    setNuevoPrecio('');
+    setNuevoCodigo('');
   }, [objetivo]);
+
+  useEffect(() => {
+    if (!creando || opcionesCategoria.length) return;
+    void categorias().then((arbol) => {
+      const opciones = aplanarCategorias(arbol);
+      setOpcionesCategoria(opciones);
+      // Lo que llega por factura de un distribuidor suele ser snack: se propone esa raíz.
+      const snacks = opciones.find((o) => o.raizSlug === 'snacks');
+      if (snacks) setNuevaCategoria((actual) => actual || snacks.id);
+    });
+  }, [creando, opcionesCategoria.length]);
 
   useEffect(() => {
     if (!objetivo || q.trim().length < 2) {
@@ -179,6 +205,36 @@ function DialogoVincular({
       await onElegir({ producto, unidadesPorBulto: Math.max(1, Number(upb) || 1) });
     } catch (e) {
       setError(mensajeError(e, { PRODUCTO_SIN_STOCK: 'Un servicio no tiene stock.', COMPRA_NO_EDITABLE: 'La compra ya no se puede editar.' }));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  /** Crea el producto en el maestro (mismo POST que V6) y lo vincula en el acto. */
+  const crearYVincular = async () => {
+    const opcion = opcionesCategoria.find((o) => o.id === nuevaCategoria);
+    if (!nuevoNombre.trim() || !opcion || nuevoPrecio === '') return;
+    setEnviando(true);
+    setError('');
+    try {
+      const tipo: TipoProducto = TIPO_POR_RAIZ[opcion.raizSlug] ?? 'indeterminado';
+      const creado = await api<ResultadoBusquedaProducto>('/productos', {
+        method: 'POST',
+        body: JSON.stringify({
+          nombre: nuevoNombre.trim(),
+          tipo,
+          categoriaId: opcion.id,
+          precioVenta: nuevoPrecio,
+          codigoBarras: nuevoCodigo.trim() || null,
+        }),
+      });
+      void refrescarCatalogo();
+      await onElegir({
+        producto: { id: creado.id, sku: creado.sku, nombre: creado.nombre, precioVenta: creado.precioVenta },
+        unidadesPorBulto: Math.max(1, Number(upb) || 1),
+      });
+    } catch (e) {
+      setError(mensajeError(e, { NOMBRE_REQUERIDO: 'Falta el nombre.', PRECIO_INVALIDO: 'El precio debe ser un entero ≥ 0.', COMPRA_NO_EDITABLE: 'La compra ya no se puede editar.' }));
     } finally {
       setEnviando(false);
     }
@@ -210,9 +266,46 @@ function DialogoVincular({
                 </li>
               ))}
             </ul>
-          ) : q.trim().length >= 2 ? (
-            <p className="text-chico text-lab3">Sin resultados. Si el producto no existe, créalo en «Alta de snack» o «Productos» y vuelve.</p>
+          ) : q.trim().length >= 2 && !creando ? (
+            <p className="text-chico text-lab3">
+              Sin resultados.{' '}
+              <button type="button" className="text-lab2 underline" onClick={() => setCreando(true)}>
+                Crear el producto ahora
+              </button>
+            </p>
           ) : null}
+          {!creando ? (
+            <button type="button" className="self-start text-chico text-lab2 underline" onClick={() => setCreando(true)}>
+              El producto no existe: crearlo
+            </button>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-tarjeta border border-sep bg-bg3 p-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-cuerpo font-semibold text-lab">Producto nuevo</h3>
+                <button type="button" className="text-chico text-lab2 underline" onClick={() => setCreando(false)}>
+                  volver a buscar
+                </button>
+              </div>
+              <Campo etiqueta="Nombre" value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} autoFocus ayuda="Como se verá en el mostrador; puedes acortar lo que dice la factura" />
+              <Selecto
+                etiqueta="Categoría"
+                valor={nuevaCategoria}
+                onValor={setNuevaCategoria}
+                opciones={opcionesCategoria.map((o) => ({ valor: o.id, etiqueta: o.etiqueta }))}
+                vacia={opcionesCategoria.length ? '—' : 'Cargando…'}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <CampoMonto
+                  etiqueta="Precio de venta"
+                  valor={nuevoPrecio}
+                  onValor={setNuevoPrecio}
+                  ayuda={unidades > 0 ? `Costo por unidad en esta compra: ${clp(Math.round(objetivo.totalLinea / unidades))}` : undefined}
+                />
+                <Campo etiqueta="Código de barras (opcional)" value={nuevoCodigo} onChange={(e) => setNuevoCodigo(e.target.value)} inputMode="numeric" />
+              </div>
+              <p className="text-chico text-lab2">Se crea con SKU automático y sin stock; al recibir esta compra entra la cantidad y empieza a controlar stock.</p>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Campo
               etiqueta="Unidades por bulto"
@@ -249,9 +342,20 @@ function DialogoVincular({
             <Boton onClick={onCerrar} deshabilitado={enviando}>
               Cancelar
             </Boton>
-            <Boton variante="principal" cargando={enviando} deshabilitado={!elegido} onClick={() => void confirmar(elegido)}>
-              Vincular
-            </Boton>
+            {creando ? (
+              <Boton
+                variante="principal"
+                cargando={enviando}
+                deshabilitado={!nuevoNombre.trim() || !nuevaCategoria || nuevoPrecio === ''}
+                onClick={() => void crearYVincular()}
+              >
+                Crear y vincular
+              </Boton>
+            ) : (
+              <Boton variante="principal" cargando={enviando} deshabilitado={!elegido} onClick={() => void confirmar(elegido)}>
+                Vincular
+              </Boton>
+            )}
           </div>
         </div>
       ) : null}
@@ -707,6 +811,7 @@ export function CompraNueva() {
       bultos: l.bultos,
       sueltas: l.sueltas,
       unidadesPorBulto: l.unidadesPorBulto,
+      totalLinea: l.total,
       productoActual: l.producto ? { id: l.producto.id, sku: l.producto.sku, nombre: l.producto.nombre, precioVenta: l.producto.precioVenta } : null,
     };
   }, [vinculando, lineas]);
@@ -1082,6 +1187,7 @@ export function CompraDetalle() {
         bultos: vinculando.bultos,
         sueltas: vinculando.sueltas,
         unidadesPorBulto: vinculando.unidadesPorBulto,
+        totalLinea: vinculando.total,
         productoActual: vinculando.producto ? { id: vinculando.producto.id, sku: vinculando.producto.sku, nombre: vinculando.producto.nombre, precioVenta: vinculando.producto.precioVenta } : null,
       }
     : null;
