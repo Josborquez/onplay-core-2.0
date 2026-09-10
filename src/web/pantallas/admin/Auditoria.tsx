@@ -22,6 +22,8 @@ const ENTIDADES = [
   { valor: 'producto', etiqueta: 'Producto' },
   { valor: 'venta', etiqueta: 'Venta' },
   { valor: 'turno_caja', etiqueta: 'Turno de caja' },
+  { valor: 'usuario', etiqueta: 'Usuario' }, // R-026: inicios de sesión, altas, cambios de clave
+  { valor: 'cliente', etiqueta: 'Cliente' },
 ];
 
 const ACCIONES = [
@@ -31,6 +33,11 @@ const ACCIONES = [
   { valor: 'anular', etiqueta: 'Anular' },
   { valor: 'abrir_turno', etiqueta: 'Abrir turno' },
   { valor: 'cerrar_turno', etiqueta: 'Cerrar turno' },
+  { valor: 'devolver', etiqueta: 'Devolver' },
+  { valor: 'recuento', etiqueta: 'Recuento' },
+  { valor: 'ajustar_stock', etiqueta: 'Ajustar stock' },
+  { valor: 'vender_reservado', etiqueta: 'Vender reservado' },
+  { valor: 'entrar', etiqueta: 'Inicio de sesión' }, // R-026
 ];
 
 const ETIQUETA_ACCION = Object.fromEntries(ACCIONES.map((a) => [a.valor, a.etiqueta]));

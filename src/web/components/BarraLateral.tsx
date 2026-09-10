@@ -27,6 +27,7 @@ const ITEMS: { a: string; etiqueta: string; icono: ReactNode; rol: RolUsuario }[
   { a: '/admin/recuentos', etiqueta: 'Recuentos', icono: '☑', rol: 'encargado' }, // E2 V20
   { a: '/admin/ventas', etiqueta: 'Ventas', icono: '◈', rol: 'encargado' },
   { a: '/admin/turnos', etiqueta: 'Turnos', icono: '▦', rol: 'encargado' },
+  { a: '/admin/reportes', etiqueta: 'Reportes', icono: '◫', rol: 'encargado' }, // R-026
   { a: '/admin/clientes', etiqueta: 'Clientes', icono: ICONO_PERSONAS, rol: 'encargado' },
   { a: '/admin/duplicados', etiqueta: 'Duplicados', icono: '⧉', rol: 'encargado' },
   { a: '/admin/auditoria', etiqueta: 'Auditoría', icono: '≣', rol: 'encargado' },
@@ -68,10 +69,10 @@ export function IndicadorTiendas() {
   return (
     <div className="flex flex-col gap-1 px-3 text-chico text-lab2">
       {estado.tiendas.map((t) => (
-        <div key={t.id} className="flex items-center gap-2" title={t.enLinea === null ? 'Sin claves en el servidor' : t.enLinea ? 'La tienda responde' : 'La tienda no responde'}>
+        <div key={t.id} className="flex items-center gap-2" title={t.enLinea === null ? 'Sin claves en el servidor' : t.enLinea ? 'En línea' : 'Sin conexión'}>
           <span className={`inline-block h-2 w-2 rounded-full ${t.enLinea === true ? 'bg-ok' : t.enLinea === false ? 'bg-peligro' : 'bg-lab3'}`} aria-hidden="true" />
           <span className="truncate">
-            {t.nombre} · {relativo(t.ultimoCatalogoEn)}
+            {t.nombre} · {t.enLinea === true ? 'en línea' : t.enLinea === false ? 'sin conexión' : 'sin claves'} · {relativo(t.ultimoCatalogoEn)}
           </span>
         </div>
       ))}

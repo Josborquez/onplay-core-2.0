@@ -430,6 +430,104 @@ export default async function rutasVentas(app: FastifyInstance) {
     return { total, pagina, porPagina, ventas };
   });
 
+  // ─── R-026: ventas por usuario por día / semana / mes (encargado+). Fechas en hora Chile. ───
+  const ZONA = 'America/Santiago';
+  const fechaChile = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: ZONA }); // YYYY-MM-DD
+  /** Instante UTC de las 00:00 de un día calendario de Chile (-03 en verano, -04 en invierno), sin tablas de zona. */
+  const inicioDiaChile = (ymd: string): Date => {
+    const [y, m, d] = ymd.split('-').map(Number) as [number, number, number];
+    for (const off of [3, 4]) {
+      const t = new Date(Date.UTC(y, m - 1, d, off, 0, 0, 0));
+      if (fechaChile(t) === ymd && t.toLocaleTimeString('en-GB', { timeZone: ZONA, hour12: false }).startsWith('00:00')) return t;
+    }
+    return new Date(Date.UTC(y, m - 1, d, 4, 0, 0, 0));
+  };
+  const sumarDias = (ymd: string, n: number): string => {
+    const [y, m, d] = ymd.split('-').map(Number) as [number, number, number];
+    return new Date(Date.UTC(y, m - 1, d + n, 12)).toISOString().slice(0, 10);
+  };
+  const lunesDe = (ymd: string): string => {
+    const [y, m, d] = ymd.split('-').map(Number) as [number, number, number];
+    const t = new Date(Date.UTC(y, m - 1, d, 12));
+    return sumarDias(ymd, -((t.getUTCDay() + 6) % 7));
+  };
+  const etiquetaPeriodo = (agrupar: 'dia' | 'semana' | 'mes', clave: string): string => {
+    if (agrupar === 'mes') {
+      const [y, m] = clave.split('-').map(Number) as [number, number];
+      const nombre = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString('es-CL', { timeZone: 'UTC', month: 'long', year: 'numeric' });
+      return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+    }
+    const [y, m, d] = clave.split('-') as [string, string, string];
+    return agrupar === 'semana' ? `Semana del ${d}-${m}-${y}` : `${d}-${m}-${y}`;
+  };
+
+  type Agrupar = 'dia' | 'semana' | 'mes';
+  interface FilaResumen {
+    periodo: string;
+    etiqueta: string;
+    usuarioId: string;
+    ventas: number;
+    total: number;
+    anuladas: number;
+  }
+  async function resumenPorUsuario(q: { desde?: string; hasta?: string; agrupar?: string }) {
+    const hoy = fechaChile(new Date());
+    const desde = /^\d{4}-\d{2}-\d{2}$/.test(q.desde ?? '') ? q.desde! : `${hoy.slice(0, 7)}-01`;
+    const hasta = /^\d{4}-\d{2}-\d{2}$/.test(q.hasta ?? '') ? q.hasta! : hoy;
+    const agrupar: Agrupar = q.agrupar === 'semana' || q.agrupar === 'mes' ? q.agrupar : 'dia';
+    const inicio = inicioDiaChile(desde);
+    const fin = new Date(inicioDiaChile(sumarDias(hasta, 1)).getTime() - 1);
+    if (fin.getTime() - inicio.getTime() > 400 * 86_400_000) throw new Error('RANGO_DEMASIADO_GRANDE');
+    const ventas = await prisma.venta.findMany({
+      where: { creadoEn: { gte: inicio, lte: fin } },
+      select: { usuarioId: true, total: true, estado: true, creadoEn: true, usuario: { select: { nombre: true } } },
+    });
+    const usuarios = new Map<string, string>();
+    const filas = new Map<string, FilaResumen>();
+    for (const v of ventas) {
+      usuarios.set(v.usuarioId, v.usuario.nombre);
+      const dia = fechaChile(v.creadoEn);
+      const periodo = agrupar === 'dia' ? dia : agrupar === 'semana' ? lunesDe(dia) : dia.slice(0, 7);
+      const clave = `${periodo}|${v.usuarioId}`;
+      const fila = filas.get(clave) ?? { periodo, etiqueta: etiquetaPeriodo(agrupar, periodo), usuarioId: v.usuarioId, ventas: 0, total: 0, anuladas: 0 };
+      if (v.estado === 'completada') {
+        fila.ventas++;
+        fila.total += v.total;
+      } else fila.anuladas++;
+      filas.set(clave, fila);
+    }
+    const lista = [...filas.values()].sort((a, b) => a.periodo.localeCompare(b.periodo) || a.usuarioId.localeCompare(b.usuarioId));
+    const totales = lista.reduce((a, f) => ({ ventas: a.ventas + f.ventas, total: a.total + f.total, anuladas: a.anuladas + f.anuladas }), { ventas: 0, total: 0, anuladas: 0 });
+    return {
+      agrupar,
+      desde,
+      hasta,
+      usuarios: [...usuarios.entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)),
+      filas: lista,
+      totales,
+    };
+  }
+
+  app.get<{ Querystring: { desde?: string; hasta?: string; agrupar?: string } }>('/ventas/resumen-usuarios', encargado, async (req, reply) => {
+    try {
+      return await resumenPorUsuario(req.query);
+    } catch (e) {
+      if ((e as Error).message === 'RANGO_DEMASIADO_GRANDE') return reply.code(422).send({ error: 'RANGO_DEMASIADO_GRANDE', detalle: 'máximo 400 días' });
+      throw e;
+    }
+  });
+
+  app.get<{ Querystring: { desde?: string; hasta?: string; agrupar?: string } }>('/ventas/resumen-usuarios.csv', encargado, async (req, reply) => {
+    const r = await resumenPorUsuario(req.query);
+    const nombre = new Map(r.usuarios.map((u) => [u.id, u.nombre]));
+    const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+    const lineas = ['periodo,usuario,ventas,total,anuladas', ...r.filas.map((f) => [esc(f.etiqueta), esc(nombre.get(f.usuarioId) ?? f.usuarioId), f.ventas, f.total, f.anuladas].join(','))];
+    return reply
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', `attachment; filename="ventas-por-usuario_${r.desde}_${r.hasta}_${r.agrupar}.csv"`)
+      .send(`﻿${lineas.join('\r\n')}\r\n`);
+  });
+
   app.get<{ Params: { id: string } }>('/ventas/:id', vendedor, async (req, reply) => {
     const venta = await prisma.venta.findUnique({
       where: { id: req.params.id },

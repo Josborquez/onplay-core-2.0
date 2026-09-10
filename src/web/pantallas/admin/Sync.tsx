@@ -385,7 +385,7 @@ export function Sync() {
                     <p className="text-cuerpo font-semibold text-lab">{NOMBRE_CANAL[canal.id] ?? canal.nombre}</p>
                     <p className="flex items-center gap-2 text-chico text-lab2">
                       <span className={`inline-block h-2 w-2 rounded-full ${tienda?.enLinea === true ? 'bg-ok' : tienda?.enLinea === false ? 'bg-peligro' : 'bg-lab3'}`} aria-hidden="true" />
-                      {tienda?.enLinea === true ? 'la tienda responde' : tienda?.enLinea === false ? 'la tienda no responde' : 'comprobando…'}
+                      {tienda?.enLinea === true ? 'en línea' : tienda?.enLinea === false ? 'sin conexión' : 'comprobando…'}
                       {!canal.credenciales ? ' · sin claves en el servidor' : ''}
                     </p>
                   </div>

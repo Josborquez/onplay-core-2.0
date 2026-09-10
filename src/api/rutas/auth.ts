@@ -40,6 +40,22 @@ export default async function rutasAuth(app: FastifyInstance) {
       // Verificación en tiempo ~constante: no revelar si el email existe.
       const hash = usuario?.passwordHash ?? (await argon2.hash('invalido'));
       const valida = await argon2.verify(hash, password).catch(() => false);
+      const exito = !!usuario && usuario.activo && valida;
+      // R-026: todo inicio de sesión queda en Auditoria (`entrar`), con éxito o sin él, siempre que
+      // el correo exista (sin usuario no hay a quién atribuirlo). IP real vía trustProxy.
+      if (usuario) {
+        await prisma.auditoria
+          .create({
+            data: {
+              usuarioId: usuario.id,
+              entidad: 'usuario',
+              entidadId: usuario.id,
+              accion: 'entrar',
+              valorNuevo: { exito, ip: req.ip, agente: String(req.headers['user-agent'] ?? '').slice(0, 200) },
+            },
+          })
+          .catch((e) => req.log.warn(e, 'no se pudo registrar el inicio de sesión'));
+      }
       if (!usuario || !usuario.activo || !valida) {
         return reply.code(401).send({ error: 'CREDENCIALES_INVALIDAS' });
       }

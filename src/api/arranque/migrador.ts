@@ -162,8 +162,18 @@ async function leerFilas(prisma: PrismaClient): Promise<FilaMigracion[]> {
   }
 }
 
+/** Una migración puede tener varias filas (intentos revertidos + el bueno): manda la aplicada, luego la fallida, al final las revertidas. */
+function prioridad(f: FilaMigracion): number {
+  if (f.rolled_back_at != null) return 0;
+  return f.finished_at != null ? 2 : 1;
+}
+
 function clasificar(archivos: MigracionArchivo[], filas: FilaMigracion[], directorio: string): EstadoMigraciones {
-  const porNombre = new Map(filas.map((f) => [f.migration_name, f]));
+  const porNombre = new Map<string, FilaMigracion>();
+  for (const f of filas) {
+    const actual = porNombre.get(f.migration_name);
+    if (!actual || prioridad(f) > prioridad(actual)) porNombre.set(f.migration_name, f);
+  }
   const estado: EstadoMigraciones = { directorio, aplicadas: [], pendientes: [], fallidas: [], conflictos: [] };
   for (const m of archivos) {
     const fila = porNombre.get(m.nombre);

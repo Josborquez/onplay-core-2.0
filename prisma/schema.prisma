@@ -73,6 +73,7 @@ enum AccionAuditoria {
   recuento
   ajustar_stock
   vender_reservado // vendió pese al bloqueo de §6.9 (pedido web pagado), con nota
+  entrar // R-026: inicio de sesión (exito true/false, ip, agente) — pedido del dueño
 }
 
 // ─── Etapa 2: inventario (docs/03-SDD §5.1) ───────────────────────────────────
