@@ -1,6 +1,6 @@
 // Tipos de la Etapa 6 (docs/11-SDD §5 y §7) que usa la pantalla de Compras.
 
-export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui';
+export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui' | 'devir';
 export type Moneda = 'CLP' | 'USD';
 export type EstadoCompra = 'borrador' | 'recibida' | 'anulada';
 export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';

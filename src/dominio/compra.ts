@@ -1,7 +1,7 @@
 // Reglas puras de compras — docs/11-SDD-etapa6-compras.md §6.
 // Aquí se calcula y se cuadra; leer el PDF y escribir en la base viven en src/api/compras.
 
-export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui';
+export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui' | 'devir';
 export type Moneda = 'CLP' | 'USD';
 export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';
 
@@ -55,6 +55,7 @@ export type ErrorCompra =
 export const LECTOR_POR_RUT: Readonly<Record<string, LectorFactura>> = {
   '91144000-8': 'andina', // Embotelladora Andina S.A. (Coca-Cola)
   '10879175-6': 'nico_factura', // Distribuidora Nico (Oscar Fernando Leiva Sanhueza): factura; su pedido web usa `nico`
+  '76632420-7': 'devir', // Devir Chile Limitada
 };
 
 export function lectorPorRut(rutNormalizado: string | null | undefined): LectorFactura | null {
@@ -76,7 +77,9 @@ export function parsearNumeroCl(texto: string): number | null {
  * Acepta el sufijo de unidad pegado o separado (u, un, und, unid, unidades).
  */
 export function unidadesPorBultoDesdeDescripcion(descripcion: string): number | null {
-  const m = /(?:^|\s)x\s*(\d{1,3})\s*(?:u|un|und|unid|unidades)?(?=\s|$|[.,;)])/i.exec(descripcion);
+  const m =
+    /(?:^|\s)x\s*(\d{1,3})\s*(?:u|un|und|unid|unidades)?(?=\s|$|[.,;)])/i.exec(descripcion) ??
+    /display\s*(\d{1,3})\s*(?:ud|u|un|und|unid|unidades)?\b/i.exec(descripcion); // Devir: «(Display 30ud)»
   if (!m) return null;
   const n = Number(m[1]);
   return n >= 1 ? n : null;

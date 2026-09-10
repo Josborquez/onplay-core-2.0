@@ -518,11 +518,12 @@ function TablaLineas({ lineas, editable, moneda = 'CLP', onVincular, onEditar, o
               {editable ? (
                 <td className="px-3 py-2 text-right">
                   <div className="flex justify-end gap-1">
-                    {onVincular ? (
+                    {onVincular && !l.movimientoId ? (
                       <button type="button" className="rounded-campo border border-sep px-2 py-1 text-chico text-lab" onClick={() => onVincular(l)}>
                         {l.producto ? 'Cambiar' : 'Vincular'}
                       </button>
                     ) : null}
+                    {l.movimientoId ? <span className="text-chico text-lab3">recibida</span> : null}
                     {onEditar ? (
                       <button type="button" className="rounded-campo border border-sep px-2 py-1 text-chico text-lab" onClick={() => onEditar(l)}>
                         Editar
@@ -1248,10 +1249,13 @@ export function CompraDetalle() {
   if (!compra) return <Cargando />;
 
   const borrador = compra.estado === 'borrador';
+  const recibida = compra.estado === 'recibida';
   const e = ETIQUETA_ESTADO_COMPRA[compra.estado];
-  const sinVincular = compra.lineas.filter((l) => !l.productoId);
-  const conProducto = compra.lineas.filter((l) => l.productoId);
+  // En una recibida, «pendientes» son las líneas que quedaron fuera (sin movimiento): se pueden vincular y recibir después.
+  const sinVincular = compra.lineas.filter((l) => !l.productoId && !l.movimientoId);
+  const conProducto = compra.lineas.filter((l) => l.productoId && !l.movimientoId);
   const unidades = conProducto.reduce((a, l) => a + l.cantidad, 0);
+  const pendientes = recibida ? compra.lineas.filter((l) => !l.movimientoId) : [];
 
   const patchCompra = async (data: Record<string, unknown>) => {
     try {
@@ -1264,6 +1268,7 @@ export function CompraDetalle() {
   };
 
   const vincularLinea = async (linea: LineaCompra, r: { producto: ResultadoBusquedaProducto | null; unidadesPorBulto: number }) => {
+    if (linea.movimientoId) return;
     await api(`/compras/${compra.id}/lineas/${linea.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ productoId: r.producto?.id ?? null, unidadesPorBulto: r.unidadesPorBulto }),
@@ -1309,7 +1314,7 @@ export function CompraDetalle() {
       setConfirmarRecibir(false);
       setAviso(
         <Banner tono="ok">
-          Recibida: {unidades} unidades entraron a {compra.ubicacion.nombre} en {r.movimientos.length} movimiento(s)
+          {recibida ? 'Líneas pendientes recibidas' : 'Recibida'}: {unidades} unidades entraron a {compra.ubicacion.nombre} en {r.movimientos.length} movimiento(s)
           {r.encendidos.length ? ` · ${r.encendidos.length} producto(s) empiezan a controlar stock` : ''}
           {r.omitidas.length ? ` · ${r.omitidas.length} línea(s) sin producto quedaron fuera` : ''}.
         </Banner>,
@@ -1319,7 +1324,7 @@ export function CompraDetalle() {
       setConfirmarRecibir(false);
       setAviso(
         <Banner tono="peligro">
-          {mensajeError(err, { SIN_LINEAS: 'Ninguna línea tiene producto: no hay nada que ingresar.', COMPRA_NO_EDITABLE: 'La compra ya no está en borrador.' })}
+          {mensajeError(err, { SIN_LINEAS: 'Ninguna línea tiene producto: no hay nada que ingresar.', SIN_PENDIENTES: 'No hay líneas pendientes con producto.', COMPRA_NO_EDITABLE: 'La compra ya no se puede recibir.' })}
         </Banner>,
       );
     } finally {
@@ -1389,10 +1394,26 @@ export function CompraDetalle() {
             <Campo etiqueta="Fecha del documento" type="date" value={compra.fechaDocumento.slice(0, 10)} onChange={(ev) => void patchCompra({ fechaDocumento: ev.target.value })} disabled={!borrador} />
             <Selecto etiqueta="Entra a" valor={compra.ubicacion.id} onValor={(v) => void patchCompra({ ubicacionId: v })} opciones={(ubicaciones.length ? ubicaciones : [compra.ubicacion]).map((u) => ({ valor: u.id, etiqueta: u.nombre }))} />
           </div>
-          {!borrador ? <p className="mt-1 text-chico text-lab3">Una compra {compra.estado} no se edita.</p> : null}
+          {!borrador ? <p className="mt-1 text-chico text-lab3">Una compra {compra.estado} no se edita{recibida && pendientes.length ? ', salvo vincular y recibir las líneas que quedaron fuera' : ''}.</p> : null}
         </div>
       </div>
 
+      {recibida && pendientes.length ? (
+        <div className="mb-4">
+          <Banner
+            tono="alerta"
+            accion={
+              conProducto.length ? (
+                <button type="button" className="underline" onClick={() => setConfirmarRecibir(true)}>
+                  Recibir {conProducto.length} pendiente(s)
+                </button>
+              ) : undefined
+            }
+          >
+            {pendientes.length} línea(s) quedaron fuera al recibir. Vincúlalas con «Vincular» y luego recíbelas: entran al stock sin tocar lo que ya se recibió.
+          </Banner>
+        </div>
+      ) : null}
       {compra.advertencias?.length ? (
         <div className="mb-4 flex flex-col gap-2">
           {compra.advertencias.map((a, i) => (
@@ -1417,15 +1438,19 @@ export function CompraDetalle() {
         <Vacio mensaje="Sin líneas todavía." />
       ) : (
         <TablaLineas
-          editable={borrador}
+          editable={borrador || (recibida && pendientes.length > 0)}
           moneda={compra.moneda}
           lineas={compra.lineas.map((l) => ({ ...l, clave: l.id }))}
           onVincular={(l) => setVinculando(compra.lineas.find((x) => x.id === l.clave) ?? null)}
-          onEditar={(l) => {
-            const x = compra.lineas.find((y) => y.id === l.clave);
-            if (x) setDialogoLinea({ abierto: true, inicial: { id: x.id, descripcion: x.descripcion, codigoProveedor: x.codigoProveedor ?? '', bultos: x.bultos, unidadesPorBulto: x.unidadesPorBulto, sueltas: x.sueltas, neto: x.neto, total: x.total } });
-          }}
-          onEliminar={(l) => void eliminarLinea(l)}
+          onEditar={
+            borrador
+              ? (l) => {
+                  const x = compra.lineas.find((y) => y.id === l.clave);
+                  if (x) setDialogoLinea({ abierto: true, inicial: { id: x.id, descripcion: x.descripcion, codigoProveedor: x.codigoProveedor ?? '', bultos: x.bultos, unidadesPorBulto: x.unidadesPorBulto, sueltas: x.sueltas, neto: x.neto, total: x.total } });
+                }
+              : undefined
+          }
+          onEliminar={borrador ? (l) => void eliminarLinea(l) : undefined}
         />
       )}
       <div className="mt-3">
@@ -1447,7 +1472,7 @@ export function CompraDetalle() {
         </div>
       ) : null}
 
-      <Dialogo abierto={confirmarRecibir} titulo="Recibir mercadería" onCerrar={() => setConfirmarRecibir(false)} cerrable={!recibiendo} ancho={520}>
+      <Dialogo abierto={confirmarRecibir} titulo={recibida ? 'Recibir líneas pendientes' : 'Recibir mercadería'} onCerrar={() => setConfirmarRecibir(false)} cerrable={!recibiendo} ancho={520}>
         <div className="flex flex-col gap-3 text-cuerpo text-lab">
           <p>
             Entran <span className="num font-semibold">{unidades}</span> unidades a <strong>{compra.ubicacion.nombre}</strong> en {conProducto.length} línea(s). Se registra un movimiento de compra por línea y cada producto guarda su costo unitario. Los productos que no controlaban stock empiezan a controlarlo.
@@ -1457,7 +1482,10 @@ export function CompraDetalle() {
               {sinVincular.length} línea(s) sin producto quedarán fuera del stock: {sinVincular.map((l) => l.descripcion).join(', ')}.
             </Banner>
           ) : null}
-          <p className="text-chico text-lab2">Una compra recibida no se anula: si algo vino mal, se corrige con una merma o un ajuste.</p>
+          <Banner tono="alerta">
+            Al recibir, la compra queda cerrada: no se podrán cambiar cantidades, montos ni las vinculaciones de las líneas que entran ahora. Si algo vino mal, se corrige después con una merma o un ajuste.
+            {sinVincular.length ? ' Las líneas sin producto quedan pendientes: se pueden vincular y recibir más tarde desde esta misma pantalla.' : ''}
+          </Banner>
           <div className="flex justify-end gap-2">
             <Boton onClick={() => setConfirmarRecibir(false)} deshabilitado={recibiendo}>
               Cancelar

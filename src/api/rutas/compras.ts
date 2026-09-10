@@ -529,13 +529,14 @@ export default async function rutasCompras(app: FastifyInstance) {
     };
   });
 
-  async function compraEditable(id: string, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) {
+  async function compraEditable(id: string, reply: { code: (n: number) => { send: (b: unknown) => unknown } }, permitirRecibida = false) {
     const compra = await prisma.compra.findUnique({ where: { id }, include: { lineas: true } });
     if (!compra) {
       reply.code(404).send({ error: 'COMPRA_NO_ENCONTRADA' });
       return null;
     }
-    if (compra.estado !== 'borrador') {
+    // §6.5: en una compra recibida solo se tocan las líneas que quedaron fuera (sin movimiento).
+    if (compra.estado !== 'borrador' && !(permitirRecibida && compra.estado === 'recibida')) {
       reply.code(409).send({ error: 'COMPRA_NO_EDITABLE', detalle: `La compra está ${compra.estado}.` });
       return null;
     }
@@ -641,10 +642,11 @@ export default async function rutasCompras(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { id: string; lineaId: string }; Body: CuerpoLinea }>('/compras/:id/lineas/:lineaId', encargado, async (req, reply) => {
-    const compra = await compraEditable(req.params.id, reply);
+    const compra = await compraEditable(req.params.id, reply, true);
     if (!compra) return;
     const actual = compra.lineas.find((l) => l.id === req.params.lineaId);
     if (!actual) return reply.code(404).send({ error: 'LINEA_NO_ENCONTRADA' });
+    if (actual.movimientoId) return reply.code(409).send({ error: 'LINEA_YA_RECIBIDA', detalle: 'Esa línea ya entró al stock: se corrige con merma o ajuste (P9).' });
     const b = req.body ?? {};
     const leida: LineaLeida = {
       codigoProveedor: b.codigoProveedor === undefined ? actual.codigoProveedor : typeof b.codigoProveedor === 'string' && b.codigoProveedor.trim() ? b.codigoProveedor.trim() : null,
@@ -694,11 +696,18 @@ export default async function rutasCompras(app: FastifyInstance) {
       include: { lineas: { orderBy: { orden: 'asc' } }, proveedor: { select: { nombre: true } }, ubicacion: true },
     });
     if (!compra) return reply.code(404).send({ error: 'COMPRA_NO_ENCONTRADA' });
-    if (compra.estado !== 'borrador') return reply.code(409).send({ error: 'COMPRA_NO_EDITABLE', detalle: `La compra ya está ${compra.estado}.` });
+    if (compra.estado === 'anulada') return reply.code(409).send({ error: 'COMPRA_NO_EDITABLE', detalle: 'La compra está anulada.' });
     if (!compra.ubicacion.activa) return reply.code(422).send({ error: 'UBICACION_NO_ENCONTRADA' });
-    const sinVincular = compra.lineas.filter((l) => !l.productoId);
-    const conProducto = compra.lineas.filter((l) => l.productoId);
-    if (conProducto.length === 0) return reply.code(422).send({ error: 'SIN_LINEAS', detalle: 'Ninguna línea tiene producto: no hay nada que ingresar.' });
+    // §6.5: en una compra ya recibida, solo entran las líneas pendientes (vinculadas después, sin movimiento).
+    const recepcionAdicional = compra.estado === 'recibida';
+    const sinVincular = compra.lineas.filter((l) => !l.productoId && !l.movimientoId);
+    const conProducto = compra.lineas.filter((l) => l.productoId && !l.movimientoId);
+    if (conProducto.length === 0) {
+      return reply.code(recepcionAdicional ? 409 : 422).send({
+        error: recepcionAdicional ? 'SIN_PENDIENTES' : 'SIN_LINEAS',
+        detalle: recepcionAdicional ? 'No hay líneas pendientes con producto: todo lo vinculado ya entró.' : 'Ninguna línea tiene producto: no hay nada que ingresar.',
+      });
+    }
     if (sinVincular.length > 0 && req.body?.omitirSinVincular !== true) {
       return reply.code(422).send({
         error: 'LINEAS_SIN_VINCULAR',
@@ -755,7 +764,7 @@ export default async function rutasCompras(app: FastifyInstance) {
         }
         const c = await tx.compra.update({
           where: { id: compra.id },
-          data: { estado: 'recibida', recibidaEn: new Date(), recibidaPorId: req.user.sub },
+          data: recepcionAdicional ? {} : { estado: 'recibida', recibidaEn: new Date(), recibidaPorId: req.user.sub },
           include: INCLUIR_COMPRA,
         });
         await tx.auditoria.create({
@@ -764,8 +773,15 @@ export default async function rutasCompras(app: FastifyInstance) {
             entidad: 'compra',
             entidadId: compra.id,
             accion: 'editar',
-            valorAnterior: { estado: 'borrador' },
-            valorNuevo: { estado: 'recibida', ubicacion: compra.ubicacion.codigo, movimientos: movimientos.length, omitidas: sinVincular.length, unidades: conProducto.reduce((a, l) => a + l.cantidad, 0) },
+            valorAnterior: { estado: compra.estado },
+            valorNuevo: {
+              estado: 'recibida',
+              recepcionAdicional,
+              ubicacion: compra.ubicacion.codigo,
+              movimientos: movimientos.length,
+              omitidas: sinVincular.length,
+              unidades: conProducto.reduce((a, l) => a + l.cantidad, 0),
+            },
           },
         });
         return { compra: c, movimientos, encendidos, omitidas: sinVincular.map((l) => l.id) };

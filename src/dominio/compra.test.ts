@@ -53,6 +53,11 @@ describe('unidadesPorBultoDesdeDescripcion', () => {
     expect(unidadesPorBultoDesdeDescripcion('Wild Protein Chocolate-Coco 45g x5')).toBe(5);
     expect(unidadesPorBultoDesdeDescripcion('Lata Pepsi Zero x 6 u')).toBe(6);
   });
+  it('entiende «(Display 30ud)» de Devir', () => {
+    expect(unidadesPorBultoDesdeDescripcion('MTI The Hobbit Play Booster(Display 30ud)(Inglés)-Cartas')).toBe(30);
+    expect(unidadesPorBultoDesdeDescripcion('MTI The Hobbit Collector (Display 12ud)(Inglés)-Cartas')).toBe(12);
+    expect(unidadesPorBultoDesdeDescripcion('*DISPLAY*- One Piece TCG: Starter Deck [ST-30] (6ct)')).toBeNull();
+  });
   it('devuelve null si no hay «x N»', () => {
     expect(unidadesPorBultoDesdeDescripcion('Display sobres Pokémon')).toBeNull();
     expect(unidadesPorBultoDesdeDescripcion('Xbox')).toBeNull();
