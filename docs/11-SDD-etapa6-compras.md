@@ -151,7 +151,7 @@ En compras `manual` los totales se recalculan con cada cambio de líneas; en `pd
 
 ## 9. Plan
 
-- **Lector Nico — hecho el 2026-09-10** con el pedido 216107 (`docs/pdf/factura-216107.pdf`): 27 líneas en 3 páginas, total $273.080.
+- **Lector Nico — hecho el 2026-09-10** con el pedido 216107 (`docs/pdf/factura-216107.pdf`): 26 líneas en 3 páginas, total $273.080.
 - **Fase 1 (C1–C6) — hecha en local el 2026-09-10.** Verificado por HTTP con la factura real: lectura 8 líneas / $177.813 cuadrado, proveedor por RUT con lector automático, borrador, 409 por duplicado, vinculación que aprende (releer trae `aprendida`), 422 sin vincular, recepción (Coca 350: bodega 43 → 91, `costoReferencia` 708; Monster nuevo: 0 → 24 y control encendido), kardex con referencia a la compra, 409 al anular/editar una recibida, compra manual con línea y totales recalculados, anulación de borrador. 16 tests nuevos (147 en total).
 - **Fase 2 — costo promedio ponderado** (C7): `Producto.costoPromedio` recalculado al recibir; `costoReferencia` pasa a ser «último».
 - **Fase 3 — margen** (C8): reporte por producto/categoría/canal sobre `VentaLinea` × costo vigente al vender (congelar `costoUnitario` en la línea de venta desde entonces).
