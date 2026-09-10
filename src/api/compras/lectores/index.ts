@@ -3,6 +3,7 @@
 import type { DocumentoLeido, LectorFactura } from '@onplay/dominio';
 import type { PaginaTexto } from '../pdf.js';
 import { leerAndina, reconoceAndina } from './andina.js';
+import { leerNico, reconoceNico } from './nico.js';
 
 export interface Lector {
   clave: Exclude<LectorFactura, 'manual'>;
@@ -13,6 +14,7 @@ export interface Lector {
 
 export const LECTORES: readonly Lector[] = [
   { clave: 'andina', nombre: 'Embotelladora Andina (Coca-Cola)', reconoce: reconoceAndina, leer: leerAndina },
+  { clave: 'nico', nombre: 'Distribuidora Nico (pedido web)', reconoce: reconoceNico, leer: leerNico },
 ];
 
 export function lectorPorClave(clave: string): Lector | null {

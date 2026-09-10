@@ -1,7 +1,7 @@
 // Reglas puras de compras — docs/11-SDD-etapa6-compras.md §6.
 // Aquí se calcula y se cuadra; leer el PDF y escribir en la base viven en src/api/compras.
 
-export type LectorFactura = 'manual' | 'andina';
+export type LectorFactura = 'manual' | 'andina' | 'nico';
 export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';
 
 /** Una línea tal como la entrega un lector (o la digita una persona). Montos en CLP enteros. */
@@ -62,9 +62,13 @@ export function parsearNumeroCl(texto: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** «Vital C/G PT600cc x 12 ter» → 12 · «Monster Energy LT473cc x 6» → 6 · sin «x N» → null. */
+/**
+ * «Vital C/G PT600cc x 12 ter» → 12 · «Monster Energy LT473cc x 6» → 6 · «Alfajor Premium x12u» → 12 ·
+ * «Lata Pepsi Zero x 6 u» → 6 · «Alfajor Game Blanco x24» → 24 · «45g x5» → 5 · sin «x N» → null.
+ * Acepta el sufijo de unidad pegado o separado (u, un, und, unid, unidades).
+ */
 export function unidadesPorBultoDesdeDescripcion(descripcion: string): number | null {
-  const m = /(?:^|\s)x\s*(\d{1,3})(?=\s|$)/i.exec(descripcion);
+  const m = /(?:^|\s)x\s*(\d{1,3})\s*(?:u|un|und|unid|unidades)?(?=\s|$|[.,;)])/i.exec(descripcion);
   if (!m) return null;
   const n = Number(m[1]);
   return n >= 1 ? n : null;

@@ -227,12 +227,13 @@ export default async function rutasCompras(app: FastifyInstance) {
     }
     const lectura: DocumentoLeido = lector.leer(paginas);
 
-    // Proveedor: el fijado, o el que tenga el RUT que leyó el lector.
+    // Proveedor: el fijado; si no, el del RUT que leyó el lector; si el documento no trae RUT
+    // (Nico manda un pedido web), el proveedor activo que use ese lector.
     const proveedor =
       proveedorFijado ??
       (lectura.proveedor.rut
         ? await prisma.proveedor.findUnique({ where: { rut: lectura.proveedor.rut }, select: { id: true, nombre: true, rut: true, lector: true } })
-        : null);
+        : await prisma.proveedor.findFirst({ where: { lector: lector.clave, activo: true }, select: { id: true, nombre: true, rut: true, lector: true } }));
     const proveedorSugerido = proveedor ? null : { nombre: lectura.proveedor.nombre ?? '', rut: lectura.proveedor.rut, lector: lectura.lector };
 
     // Líneas: cálculo + vinculación aprendida por código.

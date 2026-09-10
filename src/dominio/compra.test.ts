@@ -41,9 +41,19 @@ describe('unidadesPorBultoDesdeDescripcion', () => {
     expect(unidadesPorBultoDesdeDescripcion('Monster Energy LT473cc x 6')).toBe(6);
     expect(unidadesPorBultoDesdeDescripcion('Coca Cola Sin Azucar PT2,5 x 6 term')).toBe(6);
   });
+  it('acepta las formas de Distribuidora Nico: «x 6 und», «x 6u», «x12u», «x24», «x5»', () => {
+    expect(unidadesPorBultoDesdeDescripcion('Lata Bilz x 6 und')).toBe(6);
+    expect(unidadesPorBultoDesdeDescripcion('Lata Kem Xtreme x 6u')).toBe(6);
+    expect(unidadesPorBultoDesdeDescripcion('Alfajor Premium x12u')).toBe(12);
+    expect(unidadesPorBultoDesdeDescripcion('Alfajor Game Blanco x24')).toBe(24);
+    expect(unidadesPorBultoDesdeDescripcion('Wild Protein Chocolate-Coco 45g x5')).toBe(5);
+    expect(unidadesPorBultoDesdeDescripcion('Lata Pepsi Zero x 6 u')).toBe(6);
+  });
   it('devuelve null si no hay «x N»', () => {
     expect(unidadesPorBultoDesdeDescripcion('Display sobres Pokémon')).toBeNull();
     expect(unidadesPorBultoDesdeDescripcion('Xbox')).toBeNull();
+    expect(unidadesPorBultoDesdeDescripcion('Kryzpo Original 130 g')).toBeNull();
+    expect(unidadesPorBultoDesdeDescripcion('Super 8')).toBeNull();
   });
 });
 

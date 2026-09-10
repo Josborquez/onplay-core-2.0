@@ -735,6 +735,7 @@ model PedidoCanalLinea {
 enum LectorFactura {
   manual
   andina // Embotelladora Andina (Coca-Cola), RUT 91.144.000-8: factura electrónica en cajas/botellas
+  nico // Distribuidora Nico: «pedido» de su tienda web (sin RUT, precios con IVA), se reconoce por el nombre
 }
 
 enum TipoDocumentoCompra {
