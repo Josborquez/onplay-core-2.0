@@ -57,7 +57,7 @@ describe('lector Nico — pedido 216107', () => {
     expect(d.numeroDocumento).toBe('216107');
     expect(d.fechaDocumento).toBe('2026-09-07');
     expect(d.tipoDocumento).toBe('otro');
-    expect(d.proveedor).toEqual({ rut: null, nombre: 'Distribuidora Nico' });
+    expect(d.proveedor).toEqual({ rut: '10879175-6', nombre: 'Distribuidora Nico' });
     expect(d.lineas).toHaveLength(9);
     expect(d.totales?.total).toBe(110785);
     expect(d.totales?.neto).toBe(Math.round(110785 / 1.19));

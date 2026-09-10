@@ -51,6 +51,7 @@ Esta etapa hace que **la factura sea la unidad de trabajo**: se carga el documen
 | C8 | Reporte de margen por producto, categoría y canal | P1 | 3 |
 | C9 | Sugerencia de reposición por rotación; órdenes de compra | P2 | 4 |
 | C10 | Más lectores (un archivo + un test por distribuidor) | continuo | — |
+| C11 | Dividir una línea del documento en varios productos (facturas que consolidan variantes, como la de Nico) | P1 | 2 |
 
 ## 4. Principios de esta etapa
 
@@ -69,7 +70,7 @@ Migración `20260910131454_e6_compras`.
 
 ### 5.1 Entidades nuevas
 
-**`Proveedor`** — `id`, `nombre`, `rut` (único, normalizado `91144000-8`, nullable), `lector` (enum `LectorFactura`: `manual` · `andina` · `nico`), `activo`, `notas`, `creadoEn`. Con RUT, `POST /compras/leer` reconoce al proveedor solo.
+**`Proveedor`** — `id`, `nombre`, `rut` (único, normalizado `91144000-8`, nullable), `lector` (enum `LectorFactura`: `manual` · `andina` · `nico` · `nico_factura`), `activo`, `notas`, `creadoEn`. Con RUT, `POST /compras/leer` reconoce al proveedor solo.
 
 **`ProductoProveedor`** — memoria de vinculación (C4): `proveedorId`, `codigoProveedor` (tal como viene en el documento), `descripcionProveedor` (última vista), `productoId`, `unidadesPorBulto`. Única `(proveedorId, codigoProveedor)`.
 
@@ -106,6 +107,8 @@ Migración `20260910131454_e6_compras`.
 **Andina** (`lectores/andina.ts`, RUT 91.144.000-8): columnas `COD · DESCRIPCION · CAJ/BOT · P.UNIT · SUB TOTAL · TASA% · MONTO DESCTO · FLETE · NETO · IMPTO ESPECÍF. · TOTAL · BRUTO x BOT`. Se lee desde la derecha (las columnas del medio pueden faltar). `CAJ/BOT` `4/00` = 4 cajas, 0 botellas; unidades por caja desde «x 12» / «x 6» de la descripción (si no dice, 1 y advertencia). `TOTAL` de la línea ya incluye IVA e impuesto específico (verificado: `neto × 1,19 + impto = total`). Fila de totales: primer número = neto, último = total (las celdas vacías no viajan). La página «CEDIBLE» repite las líneas y se descarta; una página con líneas distintas se suma (factura larga). Fixture real en `andina.test.ts`.
 
 **Distribuidora Nico** (`lectores/nico.ts`, sin RUT en el documento; se reconoce por «Distribuidora Nico» / `distribuidoranico.cl`, y el proveedor se ubica por `lector = nico`): manda el **«PEDIDO» de su tienda web**, no un documento tributario (`tipoDocumento = otro`). Una fila por producto `SKU · Producto · Cantidad · Precio · Total` (la fila «SKU: …» que sigue se ignora); cabecera «Número de pedido:» y «Fecha de pedido:» dd/mm/aaaa; total en la fila «Total». **Precios con IVA incluido:** el neto se estima ÷ 1,19 y el costo unitario sale del total (D-E6-1). La cantidad es de bultos tal como los vende Nico; las unidades por bulto salen de «x 6 und», «x 6u», «x12u», «x24», «x5» (regla ampliada en `unidadesPorBultoDesdeDescripcion`); sin «x N» se asume 1 con advertencia (p. ej. «Super 8», que es una caja: la persona corrige una vez y queda recordado). Fixture real del pedido 216107 en `nico.test.ts`. Migración `e6_lector_nico` (valor al final del enum).
+
+**Factura de Distribuidora Nico** (`lectores/nico_factura.ts`, emisor Oscar Fernando Leiva Sanhueza «Distribuidora de Confites», RUT 10.879.175-6, que llega partido en celdas y se junta sin espacios; exige además «Factura Electrónica»; va ANTES que el lector del pedido porque ambos mencionan distribuidoranico.cl). Columnas `CODIGO · CANT. · DETALLE · P.UNITARIO · DSCTO · TOTAL`, «Folio N°», «Fecha :». **Las líneas son NETAS**; el IVA se calcula por línea y lo que falta para el total del pie (ILA18 y otros específicos) se **prorratea por neto** con el resto en la última línea, con advertencia (el costo unitario de las bebidas queda aproximado). Copia CEDIBLE descartada. **Ojo con la granularidad:** la factura consolida por código base y en la unidad que Nico factura («239 Lata ccu 162» junta Bilz, Pepsi, Limón Soda, Kem, Pepsi Zero, Canada Dry y Pap; «852 Alfajor Premium Calaf 4» son 4 cajas de 12), mientras el pedido web separa las variantes («239-2», «239-3»…). Por eso **para el stock por variante conviene recibir el pedido web y usar la factura para el costo**; dividir una línea en varios productos queda agendado (C11, Fase 2). Ambos lectores declaran el mismo RUT y son de la misma `familia`, así los dos documentos ubican al mismo proveedor. Fixture real del folio 111162 en `nico_factura.test.ts`. Migración `e6_lector_nico_factura`.
 
 ### 6.4 Memoria de vinculación
 Al crear o editar una línea con `productoId` y `codigoProveedor` se hace `upsert` en `ProductoProveedor` (salvo `aprender:false`). `POST /compras/leer` la usa: líneas con código conocido vienen con `productoId`, `producto`, `unidadesPorBulto` aprendidas y `aprendida:true`.
@@ -151,7 +154,7 @@ En compras `manual` los totales se recalculan con cada cambio de líneas; en `pd
 
 ## 9. Plan
 
-- **Lector Nico — hecho el 2026-09-10** con el pedido 216107 (`docs/pdf/factura-216107.pdf`): 26 líneas en 3 páginas, total $273.080.
+- **Lector Nico — hecho el 2026-09-10** con el pedido 216107 (`docs/pdf/factura-216107.pdf`): 26 líneas en 3 páginas, total $273.080. **Lector de la factura de Nico — mismo día** con el folio 111162 (`docs/pdf/20260908141054213iw13z.pdf`): 15 líneas netas, neto 214.300, IVA 40.717, ILA18 18.076, total 273.093.
 - **Fase 1 (C1–C6) — hecha en local el 2026-09-10.** Verificado por HTTP con la factura real: lectura 8 líneas / $177.813 cuadrado, proveedor por RUT con lector automático, borrador, 409 por duplicado, vinculación que aprende (releer trae `aprendida`), 422 sin vincular, recepción (Coca 350: bodega 43 → 91, `costoReferencia` 708; Monster nuevo: 0 → 24 y control encendido), kardex con referencia a la compra, 409 al anular/editar una recibida, compra manual con línea y totales recalculados, anulación de borrador. 16 tests nuevos (147 en total).
 - **Fase 2 — costo promedio ponderado** (C7): `Producto.costoPromedio` recalculado al recibir; `costoReferencia` pasa a ser «último».
 - **Fase 3 — margen** (C8): reporte por producto/categoría/canal sobre `VentaLinea` × costo vigente al vender (congelar `costoUnitario` en la línea de venta desde entonces).

@@ -15,12 +15,16 @@ import {
 import type { PaginaTexto } from '../pdf.js';
 
 export const NOMBRE_NICO = 'Distribuidora Nico';
+/** RUT del emisor de la factura de Nico (lectores/nico_factura.ts); el pedido web no lo trae, pero es el mismo proveedor. */
+export const RUT_NICO = '10879175-6';
 const IVA = 1.19;
 
-/** ¿Este documento es de Nico? Su razón social aparece en la cabecera de la primera página. */
+/** ¿Este documento es el PEDIDO web de Nico? Razón social en la cabecera + «Número de pedido». */
 export function reconoceNico(paginas: PaginaTexto[]): boolean {
   const primera = paginas[0] ?? [];
-  return primera.some((fila) => fila.some((c) => /distribuidora\s*nico/i.test(c) || /distribuidoranico\.cl/i.test(c)));
+  const esNico = primera.some((fila) => fila.some((c) => /distribuidora\s*nico/i.test(c) || /distribuidoranico\.cl/i.test(c)));
+  const esPedido = primera.some((fila) => fila.some((c) => /n[úu]mero de pedido/i.test(c)));
+  return esNico && esPedido;
 }
 
 const ES_SKU = /^[0-9]+(-[0-9]+)*$/;
@@ -95,7 +99,7 @@ export function leerNico(paginas: PaginaTexto[]): DocumentoLeido {
   const neto = total === null ? null : Math.round(total / IVA);
   return {
     lector: 'nico',
-    proveedor: { rut: null, nombre: NOMBRE_NICO },
+    proveedor: { rut: RUT_NICO, nombre: NOMBRE_NICO },
     tipoDocumento: 'otro', // pedido web, no documento tributario
     numeroDocumento,
     fechaDocumento,

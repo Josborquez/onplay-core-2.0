@@ -1,7 +1,7 @@
 // Reglas puras de compras — docs/11-SDD-etapa6-compras.md §6.
 // Aquí se calcula y se cuadra; leer el PDF y escribir en la base viven en src/api/compras.
 
-export type LectorFactura = 'manual' | 'andina' | 'nico';
+export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura';
 export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';
 
 /** Una línea tal como la entrega un lector (o la digita una persona). Montos en CLP enteros. */
@@ -47,6 +47,7 @@ export type ErrorCompra =
 /** Proveedores reconocidos por RUT (normalizado, sin puntos) → lector que entiende su documento. */
 export const LECTOR_POR_RUT: Readonly<Record<string, LectorFactura>> = {
   '91144000-8': 'andina', // Embotelladora Andina S.A. (Coca-Cola)
+  '10879175-6': 'nico_factura', // Distribuidora Nico (Oscar Fernando Leiva Sanhueza): factura; su pedido web usa `nico`
 };
 
 export function lectorPorRut(rutNormalizado: string | null | undefined): LectorFactura | null {

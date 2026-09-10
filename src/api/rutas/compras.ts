@@ -215,7 +215,9 @@ export default async function rutasCompras(app: FastifyInstance) {
       proveedorFijado = await prisma.proveedor.findUnique({ where: { id: b.proveedorId }, select: { id: true, nombre: true, rut: true, lector: true } });
       if (!proveedorFijado) return reply.code(422).send({ error: 'PROVEEDOR_NO_ENCONTRADO' });
     }
-    const lector = (proveedorFijado && proveedorFijado.lector !== 'manual' ? lectorPorClave(proveedorFijado.lector) : null) ?? detectarLector(paginas);
+    // El documento manda (un proveedor puede mandar más de un formato: Nico, pedido web y factura);
+    // el lector guardado en el proveedor solo se usa si ninguno reconoce el PDF.
+    const lector = detectarLector(paginas) ?? (proveedorFijado && proveedorFijado.lector !== 'manual' ? lectorPorClave(proveedorFijado.lector) : null);
     if (!lector) {
       const muestra = paginas[0]?.slice(0, 12).map((f) => f.join(' · ')) ?? [];
       return reply.code(422).send({
@@ -233,7 +235,8 @@ export default async function rutasCompras(app: FastifyInstance) {
       proveedorFijado ??
       (lectura.proveedor.rut
         ? await prisma.proveedor.findUnique({ where: { rut: lectura.proveedor.rut }, select: { id: true, nombre: true, rut: true, lector: true } })
-        : await prisma.proveedor.findFirst({ where: { lector: lector.clave, activo: true }, select: { id: true, nombre: true, rut: true, lector: true } }));
+        : null) ??
+      (await prisma.proveedor.findFirst({ where: { lector: { in: lector.familia }, activo: true }, select: { id: true, nombre: true, rut: true, lector: true } }));
     const proveedorSugerido = proveedor ? null : { nombre: lectura.proveedor.nombre ?? '', rut: lectura.proveedor.rut, lector: lectura.lector };
 
     // Líneas: cálculo + vinculación aprendida por código.

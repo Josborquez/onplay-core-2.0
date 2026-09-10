@@ -4,17 +4,22 @@ import type { DocumentoLeido, LectorFactura } from '@onplay/dominio';
 import type { PaginaTexto } from '../pdf.js';
 import { leerAndina, reconoceAndina } from './andina.js';
 import { leerNico, reconoceNico } from './nico.js';
+import { leerNicoFactura, reconoceNicoFactura } from './nico_factura.js';
 
 export interface Lector {
   clave: Exclude<LectorFactura, 'manual'>;
   nombre: string;
+  /** Lectores del MISMO proveedor (Nico manda pedido web y factura): cualquiera de ellos ubica al proveedor. */
+  familia: Exclude<LectorFactura, 'manual'>[];
   reconoce: (paginas: PaginaTexto[]) => boolean;
   leer: (paginas: PaginaTexto[]) => DocumentoLeido;
 }
 
 export const LECTORES: readonly Lector[] = [
-  { clave: 'andina', nombre: 'Embotelladora Andina (Coca-Cola)', reconoce: reconoceAndina, leer: leerAndina },
-  { clave: 'nico', nombre: 'Distribuidora Nico (pedido web)', reconoce: reconoceNico, leer: leerNico },
+  { clave: 'andina', nombre: 'Embotelladora Andina (Coca-Cola)', familia: ['andina'], reconoce: reconoceAndina, leer: leerAndina },
+  // La factura de Nico también menciona distribuidoranico.cl: va ANTES que el pedido web.
+  { clave: 'nico_factura', nombre: 'Distribuidora Nico (factura)', familia: ['nico_factura', 'nico'], reconoce: reconoceNicoFactura, leer: leerNicoFactura },
+  { clave: 'nico', nombre: 'Distribuidora Nico (pedido web)', familia: ['nico', 'nico_factura'], reconoce: reconoceNico, leer: leerNico },
 ];
 
 export function lectorPorClave(clave: string): Lector | null {
