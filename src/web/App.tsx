@@ -3,7 +3,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { iniciarColaVentas } from './cola.js';
-import { BarraLateral } from './components/BarraLateral.js';
+import { BarraInferior, BarraLateral } from './components/BarraLateral.js';
+import { ProveedorConfirmar } from './components/Confirmar.js';
+import { ListaAvisos, ProveedorAvisos } from './components/Toast.js';
+import { useAncho } from './pantalla.js';
 import { RequiereRol } from './components/RequiereRol.js';
 import { Cargando } from './components/base.js';
 import { Cliente } from './pantallas/Cliente.js';
@@ -49,6 +52,7 @@ function Armazon({ children }: { children: ReactNode }) {
   const { plegada: preferida, conmutar: conmutarLateral } = useLateralPlegada();
   const angosta = useAngosta();
   const plegada = angosta || preferida;
+  const { tramo } = useAncho();
   const navegar = useNavigate();
 
   // F10: la cola de ventas offline corre en cualquier pantalla con sesión.
@@ -74,13 +78,29 @@ function Armazon({ children }: { children: ReactNode }) {
   // 2.0 §5.4: la clave del entorno es de un solo uso; nada se usa hasta cambiarla.
   if (usuario.debeCambiarClave) return <CambiarClave />;
 
+  // Rediseño 1a (R-029): bajo 640 px la barra pasa abajo (4 pestañas + «Más»).
+  if (tramo === 'telefono') {
+    return (
+      <div className="flex h-screen flex-col bg-bg2">
+        <div className="relative min-h-0 flex-1">
+          <main className="h-full overflow-y-auto">{children}</main>
+          <ListaAvisos />
+        </div>
+        <BarraInferior tema={tema} onTema={conmutarTema} />
+      </div>
+    );
+  }
+
   return (
     <div
       className="rejilla-app grid h-screen bg-bg2"
       style={{ gridTemplateColumns: `${plegada ? 72 : 236}px minmax(0, 1fr)` }}
     >
-      <BarraLateral plegada={plegada} onPlegar={conmutarLateral} tema={tema} onTema={conmutarTema} />
-      <main className="min-h-0 overflow-y-auto">{children}</main>
+      <BarraLateral plegada={plegada} bloqueada={angosta} onPlegar={conmutarLateral} tema={tema} onTema={conmutarTema} />
+      <div className="relative min-h-0">
+        <main className="h-full overflow-y-auto">{children}</main>
+        <ListaAvisos />
+      </div>
     </div>
   );
 }
@@ -97,6 +117,8 @@ function admin(pantalla: ReactNode, rol: RolUsuario = 'encargado') {
 export function App() {
   return (
     <ProveedorSesion>
+      <ProveedorAvisos>
+      <ProveedorConfirmar>
       <BrowserRouter>
         <Routes>
           <Route path="/entrar" element={<Entrar />} />
@@ -147,6 +169,8 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </ProveedorConfirmar>
+      </ProveedorAvisos>
     </ProveedorSesion>
   );
 }

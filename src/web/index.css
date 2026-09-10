@@ -23,6 +23,7 @@
   --alerta: #b25000;
   --peligro: #c4001a;
   --sombra: 0 1px 2px rgba(26, 18, 32, 0.05), 0 6px 20px rgba(26, 18, 32, 0.05);
+  --velo: rgba(26, 18, 32, 0.3);
 }
 
 [data-tema='oscuro'] {
@@ -44,6 +45,7 @@
   --alerta: #ff9f0a;
   --peligro: #ff453a;
   --sombra: 0 1px 3px rgba(0, 0, 0, 0.35), 0 8px 28px rgba(0, 0, 0, 0.35);
+  --velo: rgba(0, 0, 0, 0.5);
 }
 
 /* Escala fluida (05-SDD §4.2) */
@@ -53,6 +55,8 @@
   --t-cuerpo: clamp(13.5px, 1vw, 16px);
   --t-chico: clamp(11.5px, 0.82vw, 13px);
   --t-rot: clamp(9.5px, 0.68vw, 11px);
+  /* Capas (rediseño 1g, R-029) */
+  --z-toast: 50;
 }
 
 html,
@@ -112,6 +116,25 @@ textarea {
   }
   .pulso {
     animation: none !important;
+  }
+}
+
+/* Línea de progreso de carga en fondo (rediseño 1g): el contenido no se vacía. */
+@keyframes barrido {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+.barra-progreso {
+  animation: barrido 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .barra-progreso {
+    animation: none;
+    width: 100%;
   }
 }
 

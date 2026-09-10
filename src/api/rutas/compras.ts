@@ -479,14 +479,25 @@ export default async function rutasCompras(app: FastifyInstance) {
   }
 
   // ---------- Listar y ver (§7.3) ----------
-  app.get<{ Querystring: { estado?: string; proveedorId?: string; pagina?: string } }>('/compras', encargado, async (req) => {
+  app.get<{ Querystring: { estado?: string; proveedorId?: string; pagina?: string; pendientes?: string; q?: string } }>('/compras', encargado, async (req) => {
     const porPagina = 50;
     const pagina = Math.max(1, Number(req.query.pagina) || 1);
+    // Rediseño 1c (R-029): «Con pendientes» = recibidas con alguna línea sin movimiento.
+    const conPendientes: Prisma.CompraWhereInput = { estado: 'recibida', lineas: { some: { movimientoId: null } } };
+    const q = (req.query.q ?? '').trim();
     const where: Prisma.CompraWhereInput = {
-      ...(req.query.estado && ['borrador', 'recibida', 'anulada'].includes(req.query.estado) ? { estado: req.query.estado as 'borrador' | 'recibida' | 'anulada' } : {}),
+      ...(req.query.pendientes === 'true'
+        ? conPendientes
+        : req.query.estado && ['borrador', 'recibida', 'anulada'].includes(req.query.estado)
+          ? { estado: req.query.estado as 'borrador' | 'recibida' | 'anulada' }
+          : {}),
       ...(req.query.proveedorId ? { proveedorId: req.query.proveedorId } : {}),
+      ...(q ? { OR: [{ numeroDocumento: { contains: q } }, { proveedor: { nombre: { contains: q } } }] } : {}),
     };
-    const [total, compras] = await Promise.all([
+    const inicioMes = new Date();
+    inicioMes.setUTCDate(1);
+    inicioMes.setUTCHours(0, 0, 0, 0);
+    const [total, compras, porEstado, pendientes, mes] = await Promise.all([
       prisma.compra.count({ where }),
       prisma.compra.findMany({
         where,
@@ -496,19 +507,27 @@ export default async function rutasCompras(app: FastifyInstance) {
         include: {
           proveedor: { select: { id: true, nombre: true } },
           usuario: { select: { nombre: true } },
-          lineas: { select: { productoId: true, cantidad: true } },
+          lineas: { select: { productoId: true, cantidad: true, movimientoId: true } },
         },
       }),
+      prisma.compra.groupBy({ by: ['estado'], _count: { _all: true } }),
+      prisma.compra.count({ where: conPendientes }),
+      prisma.compra.aggregate({ where: { estado: 'recibida', recibidaEn: { gte: inicioMes } }, _sum: { total: true }, _count: { _all: true } }),
     ]);
+    const conteos = { borrador: 0, recibida: 0, anulada: 0, conPendientes: pendientes };
+    for (const g of porEstado) conteos[g.estado] = g._count._all;
     return {
       total,
       pagina,
       porPagina,
+      conteos,
+      mes: { compras: mes._count._all, total: mes._sum.total ?? 0 },
       compras: compras.map((c) => ({
         ...c,
         lineas: undefined,
         totalLineas: c.lineas.length,
-        sinVincular: c.lineas.filter((l) => !l.productoId).length,
+        sinVincular: c.lineas.filter((l) => !l.productoId && !l.movimientoId).length,
+        pendientes: c.estado === 'recibida' ? c.lineas.filter((l) => !l.movimientoId).length : 0,
         unidades: c.lineas.reduce((a, l) => a + l.cantidad, 0),
       })),
     };

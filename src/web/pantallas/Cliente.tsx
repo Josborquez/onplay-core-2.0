@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ErrorApi, api } from '../api.js';
 import { Banner, Boton, CampoMonto, Cargando, Dialogo, Insignia, Segmentado, Vacio } from '../components/base.js';
+import { useConfirmar } from '../components/Confirmar.js';
 import { useSesion } from '../sesion.js';
 import {
   ETIQUETA_MOTIVO,
@@ -182,6 +183,7 @@ function DialogoMovimiento({
 }
 
 export function Cliente() {
+  const confirmar = useConfirmar();
   const { id } = useParams<{ id: string }>();
   const { usuario } = useSesion();
   const [ficha, setFicha] = useState<FichaCliente | null | 'cargando'>('cargando');
@@ -233,11 +235,13 @@ export function Cliente() {
   };
 
   // §7.3 (criterio 20): desvincular NO borra — la API marca desvinculadoEn.
-  const desvincular = (canalId: string, cuenta: string) => {
+  const desvincular = async (canalId: string, cuenta: string) => {
     if (!id) return;
-    const seguro = window.confirm(
-      `Se desvincula la cuenta ${cuenta}. El historial no se borra y la importación no la volverá a vincular sola. ¿Desvincular?`,
-    );
+    const seguro = await confirmar({
+      titulo: `¿Desvincular la cuenta ${cuenta}?`,
+      cuerpo: 'El historial no se borra y la importación no la volverá a vincular sola. Se puede volver a vincular a mano.',
+      accion: 'Desvincular',
+    });
     if (!seguro) return;
     setErrorVinculo('');
     setDesvinculando(canalId);

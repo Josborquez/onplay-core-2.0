@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ErrorApi, api, descargar } from '../../api.js';
 import { Banner, Boton, Campo, Cargando, Insignia } from '../../components/base.js';
+import { useConfirmar } from '../../components/Confirmar.js';
 import { fecha, hora } from '../../utils/formato.js';
 
 interface Migraciones {
@@ -53,6 +54,7 @@ function kb(bytes: number): string {
 }
 
 export function Sistema({ usuarioActualId }: { usuarioActualId: string }) {
+  const confirmar = useConfirmar();
   const [migraciones, setMigraciones] = useState<Migraciones | null>(null);
   const [respaldos, setRespaldos] = useState<Respaldos | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioAdmin[] | null>(null);
@@ -109,14 +111,28 @@ export function Sistema({ usuarioActualId }: { usuarioActualId: string }) {
 
   const conmutarActivo = (u: UsuarioAdmin) =>
     correr(`activo:${u.id}`, async () => {
-      if (!window.confirm(`${u.activo ? 'Desactivar' : 'Activar'} a ${u.nombre} (${u.email})?`)) return;
+      const seguro = await confirmar({
+        titulo: `¿${u.activo ? 'Desactivar' : 'Activar'} a ${u.nombre}?`,
+        cuerpo: u.activo ? `${u.email} no podrá entrar hasta que se vuelva a activar. Sus ventas y registros no se tocan.` : `${u.email} volverá a poder entrar con su clave.`,
+        accion: u.activo ? 'Desactivar' : 'Activar',
+        tono: u.activo ? 'peligro' : 'principal',
+      });
+      if (!seguro) return;
       await api(`/admin/usuarios/${u.id}`, { method: 'PATCH', body: JSON.stringify({ activo: !u.activo }) });
       await cargar();
     });
 
   const renumerar = (dryRun: boolean) =>
     correr('renumerar', async () => {
-      if (!dryRun && !window.confirm('Renombrar los SKU IND- derivables. Queda auditado por producto. ¿Aplicar?')) return;
+      if (!dryRun) {
+        const seguro = await confirmar({
+          titulo: '¿Renumerar los SKU IND- derivables?',
+          cuerpo: 'Cada producto renombrado queda auditado. Los SKU publicados en las tiendas no se tocan (P3).',
+          accion: 'Renumerar',
+          tono: 'principal',
+        });
+        if (!seguro) return;
+      }
       setRenumeracion(await api<ResumenRenumeracion>(`/admin/renumerar-ind?dryRun=${dryRun}`, { method: 'POST' }));
     });
 

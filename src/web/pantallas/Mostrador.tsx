@@ -20,6 +20,7 @@ import { useSesion } from '../sesion.js';
 import { rolAlcanza } from '../tipos.js';
 import { PanelVenta, motivoNoCobrable } from '../components/PanelVenta.js';
 import { Banner, Boton, Dialogo } from '../components/base.js';
+import { useConfirmar } from '../components/Confirmar.js';
 
 type DialogoAbierto = 'ninguno' | 'cobro' | 'suelto' | 'cierre' | 'ayuda';
 
@@ -122,6 +123,8 @@ export function Mostrador() {
     setDialogo('cobro');
   }, []);
 
+  const confirmar = useConfirmar();
+
   // Atajos globales: solo teclas de función (05-SDD V2).
   useEffect(() => {
     const alTeclear = (e: KeyboardEvent) => {
@@ -133,18 +136,25 @@ export function Mostrador() {
         if (dialogo === 'ninguno' && cobrable) abrirCobro();
       } else if (e.key === 'F8') {
         e.preventDefault();
-        if (dialogo === 'ninguno' && carrito.length > 0 && window.confirm('¿Vaciar el carrito?')) {
-          setCarrito([]);
-          setDescuento('');
-          setClaveVenta(null);
-          setCliente(null);
-          setNombreLibre('');
+        if (dialogo === 'ninguno' && carrito.length > 0) {
+          void confirmar({
+            titulo: '¿Vaciar el carrito?',
+            cuerpo: `Se quitan ${carrito.length} línea${carrito.length > 1 ? 's' : ''} de la venta. No se registra nada.`,
+            accion: 'Vaciar carrito',
+          }).then((ok) => {
+            if (!ok) return;
+            setCarrito([]);
+            setDescuento('');
+            setClaveVenta(null);
+            setCliente(null);
+            setNombreLibre('');
+          });
         }
       }
     };
     window.addEventListener('keydown', alTeclear);
     return () => window.removeEventListener('keydown', alTeclear);
-  }, [dialogo, cobrable, carrito.length, abrirCobro]);
+  }, [dialogo, cobrable, carrito.length, abrirCobro, confirmar]);
 
   const construirCuerpo = useCallback(
     (pagos: PagoNuevo[], extra?: { forzarReservado?: { nota: string } }): CuerpoVenta => ({

@@ -8,6 +8,7 @@ import { useEnLinea } from '../../tema.js';
 import { ETIQUETA_TIPO, type ProductoAdmin } from '../../tipos.js';
 import { clp } from '../../utils/formato.js';
 import { Banner, Boton, Cargando, Insignia, Vacio } from '../../components/base.js';
+import { useConfirmar } from '../../components/Confirmar.js';
 import { Encabezado } from './util.js';
 
 const normalizar = (s: string) =>
@@ -61,6 +62,7 @@ function Tarjeta({
 }
 
 export function Duplicados() {
+  const confirmar = useConfirmar();
   const [pares, setPares] = useState<Par[] | null>(null);
   const [error, setError] = useState(false);
   const [errorFusion, setErrorFusion] = useState('');
@@ -94,9 +96,16 @@ export function Duplicados() {
 
   const fusionar = useCallback(
     async (sobrevive: ProductoAdmin, absorbido: ProductoAdmin) => {
-      const seguro = window.confirm(
-        `Se conserva "${sobrevive.nombre}" (${sobrevive.sku}) y "${absorbido.nombre}" (${absorbido.sku}) quedará inactivo. Sus vínculos con las tiendas pasan al conservado. ¿Fusionar?`,
-      );
+      const seguro = await confirmar({
+        titulo: `¿Fusionar «${absorbido.nombre}» en «${sobrevive.nombre}»?`,
+        cuerpo: (
+          <>
+            Se conserva <strong className="font-semibold text-lab">{sobrevive.nombre}</strong> ({sobrevive.sku}) y <strong className="font-semibold text-lab">{absorbido.nombre}</strong> ({absorbido.sku}) queda inactivo. Sus vínculos con las tiendas pasan al conservado. Queda auditado.
+          </>
+        ),
+        accion: 'Fusionar',
+        tono: 'principal',
+      });
       if (!seguro) return;
       setErrorFusion('');
       setFusionando(sobrevive.id);

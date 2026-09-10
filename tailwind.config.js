@@ -21,7 +21,11 @@ export default {
       ok: 'var(--ok)',
       alerta: 'var(--alerta)',
       peligro: 'var(--peligro)',
+      'barra-solida': 'var(--barra-solida)',
+      velo: 'var(--velo)',
     },
+    zIndex: { 0: '0', 10: '10', 20: '20', 30: '30', 40: '40', 50: '50', toast: 'var(--z-toast)' },
+    opacity: { 0: '0', 35: '0.35', 50: '0.5', 55: '0.55', 70: '0.7', 100: '1' },
     fontFamily: {
       sans: ['-apple-system', 'Inter', 'system-ui', 'sans-serif'],
       mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
