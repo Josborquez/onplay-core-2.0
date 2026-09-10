@@ -25,7 +25,7 @@ export default {
       velo: 'var(--velo)',
     },
     zIndex: { 0: '0', 10: '10', 20: '20', 30: '30', 40: '40', 50: '50', toast: 'var(--z-toast)' },
-    opacity: { 0: '0', 35: '0.35', 50: '0.5', 55: '0.55', 70: '0.7', 100: '1' },
+    opacity: { 0: '0', 30: '0.3', 35: '0.35', 40: '0.4', 50: '0.5', 55: '0.55', 60: '0.6', 70: '0.7', 80: '0.8', 90: '0.9', 100: '1' },
     fontFamily: {
       sans: ['-apple-system', 'Inter', 'system-ui', 'sans-serif'],
       mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
