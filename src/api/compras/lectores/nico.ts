@@ -99,6 +99,7 @@ export function leerNico(paginas: PaginaTexto[]): DocumentoLeido {
   const neto = total === null ? null : Math.round(total / IVA);
   return {
     lector: 'nico',
+    moneda: 'CLP',
     proveedor: { rut: RUT_NICO, nombre: NOMBRE_NICO },
     tipoDocumento: 'otro', // pedido web, no documento tributario
     numeroDocumento,

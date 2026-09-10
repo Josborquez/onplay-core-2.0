@@ -5,6 +5,7 @@ import type { PaginaTexto } from '../pdf.js';
 import { leerAndina, reconoceAndina } from './andina.js';
 import { leerNico, reconoceNico } from './nico.js';
 import { leerNicoFactura, reconoceNicoFactura } from './nico_factura.js';
+import { leerCoqui, reconoceCoqui } from './coqui.js';
 
 export interface Lector {
   clave: Exclude<LectorFactura, 'manual'>;
@@ -20,6 +21,7 @@ export const LECTORES: readonly Lector[] = [
   // La factura de Nico también menciona distribuidoranico.cl: va ANTES que el pedido web.
   { clave: 'nico_factura', nombre: 'Distribuidora Nico (factura)', familia: ['nico_factura', 'nico'], reconoce: reconoceNicoFactura, leer: leerNicoFactura },
   { clave: 'nico', nombre: 'Distribuidora Nico (pedido web)', familia: ['nico', 'nico_factura'], reconoce: reconoceNico, leer: leerNico },
+  { clave: 'coqui', nombre: 'Coqui Hobby (Sales Order en USD)', familia: ['coqui'], reconoce: reconoceCoqui, leer: leerCoqui },
 ];
 
 export function lectorPorClave(clave: string): Lector | null {

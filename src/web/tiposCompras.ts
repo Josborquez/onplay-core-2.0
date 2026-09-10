@@ -1,6 +1,7 @@
 // Tipos de la Etapa 6 (docs/11-SDD §5 y §7) que usa la pantalla de Compras.
 
-export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura';
+export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui';
+export type Moneda = 'CLP' | 'USD';
 export type EstadoCompra = 'borrador' | 'recibida' | 'anulada';
 export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';
 
@@ -58,6 +59,7 @@ export interface LineaCompra {
   impuestos: number;
   total: number;
   costoUnitario: number;
+  totalOriginal?: number | null;
   movimientoId: string | null;
   stockVigente?: number | null;
 }
@@ -89,6 +91,10 @@ export interface CompraDetalle {
   origen: string;
   lector: LectorFactura;
   archivoNombre: string | null;
+  moneda: Moneda;
+  tipoCambio: number | null;
+  gastosExtra: number;
+  totalOriginal: number | null;
   neto: number;
   impuestos: number;
   total: number;
@@ -114,6 +120,7 @@ export interface LineaPropuesta {
   impuestos: number;
   total: number;
   costoUnitario: number;
+  totalOriginal?: number | null;
   productoId: string | null;
   producto: ProductoCompra | null;
   aprendida: boolean;
@@ -128,6 +135,11 @@ export interface Lectura {
   tipoDocumento: TipoDocumentoCompra;
   numeroDocumento: string | null;
   fechaDocumento: string | null;
+  moneda: Moneda;
+  tipoCambio: number | null;
+  gastosExtra: number;
+  totalOriginal: number | null;
+  requiereTipoCambio: boolean;
   lineas: LineaPropuesta[];
   totales: { neto: number; impuestos: number; total: number; sumaLineas: { neto: number; impuestos: number; total: number } };
   advertencias: string[];

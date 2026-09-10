@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   calcularLinea,
+  convertirLineasAClp,
   cuadrarTotales,
   fechaIsoDesdeCl,
   lectorPorRut,
+  margenPorcentaje,
   parsearNumeroCl,
+  parsearNumeroUs,
+  precioParaMargen,
   unidadesPorBultoDesdeDescripcion,
   type LineaCalculada,
 } from './compra.js';
@@ -101,6 +105,38 @@ describe('cuadrarTotales — §6.2', () => {
     expect(mal.total).toBe(60000);
     expect(mal.advertencias).toHaveLength(1);
     expect(mal.advertencias[0]).toContain('total');
+  });
+});
+
+describe('moneda extranjera — §6.6', () => {
+  it('parsearNumeroUs entiende el formato de EE. UU.', () => {
+    expect(parsearNumeroUs('1,398.90')).toBe(1398.9);
+    expect(parsearNumeroUs('34.80')).toBe(34.8);
+    expect(parsearNumeroUs('.00')).toBe(0);
+    expect(parsearNumeroUs('16.99')).toBe(16.99);
+    expect(parsearNumeroUs('EACH')).toBeNull();
+    expect(parsearNumeroUs('1.398,90')).toBeNull();
+  });
+  it('convierte a CLP con el tipo de cambio y reparte los gastos por monto, cuadrando exacto', () => {
+    const lineas = [
+      { ...base, codigoProveedor: 'A', totalOriginal: 34.8 },
+      { ...base, codigoProveedor: 'B', totalOriginal: 0 }, // kit gratis
+      { ...base, codigoProveedor: 'C', totalOriginal: 135 },
+    ];
+    const r = convertirLineasAClp(lineas, 950, 20000);
+    expect(r[0]!.total).toBe(Math.round(34.8 * 950) + Math.round((20000 * 34.8) / 169.8));
+    expect(r[1]!.total).toBe(0); // sin monto no carga gastos
+    expect(r.reduce((a, l) => a + l.total, 0)).toBe(Math.round(34.8 * 950) + Math.round(135 * 950) + 20000);
+    expect(r[2]!.neto).toBe(r[2]!.total);
+    expect(r[2]!.impuestos).toBe(0);
+  });
+  it('margen y precio sugerido', () => {
+    expect(margenPorcentaje(1500, 708)).toBe(52.8);
+    expect(margenPorcentaje(0, 708)).toBeNull();
+    expect(margenPorcentaje(600, 708)).toBe(-18);
+    expect(precioParaMargen(708, 40)).toBe(1180); // 708 / 0,6 = 1180
+    expect(precioParaMargen(487, 50)).toBe(980); // 974 → 980
+    expect(precioParaMargen(100, 100)).toBe(0);
   });
 });
 

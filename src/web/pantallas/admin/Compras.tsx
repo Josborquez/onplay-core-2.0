@@ -19,6 +19,7 @@ import {
   type Lectura,
   type LineaCompra,
   type LineaPropuesta,
+  type Moneda,
   type OpcionLector,
   type Proveedor,
   type ResultadoBusquedaProducto,
@@ -46,6 +47,48 @@ function calcularCantidad(bultos: number, unidadesPorBulto: number, sueltas: num
 }
 
 const hoyIso = () => new Date().toISOString().slice(0, 10);
+
+/** Margen sobre el precio de venta, en % (11-SDD §6.6). Null sin precio. */
+function margenPct(precioVenta: number, costo: number): number | null {
+  if (!(precioVenta > 0)) return null;
+  return Math.round(((precioVenta - costo) / precioVenta) * 1000) / 10;
+}
+
+/** Precio que deja el margen pedido, redondeado hacia arriba a $10. */
+function precioParaMargen(costo: number, margen: number): number {
+  return Math.ceil(costo / (1 - margen / 100) / 10) * 10;
+}
+
+function usd(monto: number): string {
+  return `US$ ${monto.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function Margen({ precioVenta, costo }: { precioVenta: number; costo: number }) {
+  const m = margenPct(precioVenta, costo);
+  if (m === null) return <span className="text-chico text-lab3">sin precio</span>;
+  const tono = m < 0 ? 'text-peligro' : m < 20 ? 'text-alerta' : 'text-ok';
+  return (
+    <span className={`num text-chico ${tono}`}>
+      {m}% margen
+    </span>
+  );
+}
+
+const MARGENES_SUGERIDOS = [30, 40, 50];
+
+function SugerenciasPrecio({ costo, onElegir }: { costo: number; onElegir: (precio: number) => void }) {
+  if (!(costo > 0)) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-chico text-lab2">
+      <span>Con margen de</span>
+      {MARGENES_SUGERIDOS.map((m) => (
+        <button key={m} type="button" className="rounded-campo border border-sep px-2 py-1 text-lab" onClick={() => onElegir(precioParaMargen(costo, m))}>
+          {m}% → {clp(precioParaMargen(costo, m))}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /* =========================================================================================
  * Proveedores
@@ -157,6 +200,8 @@ function DialogoVincular({
   const [nuevaCategoria, setNuevaCategoria] = useState('');
   const [nuevoPrecio, setNuevoPrecio] = useState<number | ''>('');
   const [nuevoCodigo, setNuevoCodigo] = useState('');
+  // Precio de venta a fijar en el producto elegido (opcional): PATCH /productos/:id al vincular.
+  const [precioVentaNuevo, setPrecioVentaNuevo] = useState<number | ''>('');
 
   useEffect(() => {
     if (!objetivo) return;
@@ -170,7 +215,12 @@ function DialogoVincular({
     setNuevoNombre(objetivo.descripcion);
     setNuevoPrecio('');
     setNuevoCodigo('');
+    setPrecioVentaNuevo('');
   }, [objetivo]);
+
+  useEffect(() => {
+    setPrecioVentaNuevo('');
+  }, [elegido]);
 
   useEffect(() => {
     if (!creando || opcionesCategoria.length) return;
@@ -197,11 +247,16 @@ function DialogoVincular({
   }, [q, objetivo]);
 
   const unidades = objetivo ? calcularCantidad(objetivo.bultos, Number(upb) || 1, objetivo.sueltas) : 0;
+  const costoUnitario = objetivo && unidades > 0 ? Math.round(objetivo.totalLinea / unidades) : 0;
 
   const confirmar = async (producto: ResultadoBusquedaProducto | null) => {
     setEnviando(true);
     setError('');
     try {
+      if (producto && precioVentaNuevo !== '' && precioVentaNuevo !== producto.precioVenta) {
+        await api(`/productos/${producto.id}`, { method: 'PATCH', body: JSON.stringify({ precioVenta: precioVentaNuevo }) });
+        producto = { ...producto, precioVenta: precioVentaNuevo };
+      }
       await onElegir({ producto, unidadesPorBulto: Math.max(1, Number(upb) || 1) });
     } catch (e) {
       setError(mensajeError(e, { PRODUCTO_SIN_STOCK: 'Un servicio no tiene stock.', COMPRA_NO_EDITABLE: 'La compra ya no se puede editar.' }));
@@ -295,14 +350,15 @@ function DialogoVincular({
                 vacia={opcionesCategoria.length ? '—' : 'Cargando…'}
               />
               <div className="grid grid-cols-2 gap-3">
-                <CampoMonto
-                  etiqueta="Precio de venta"
-                  valor={nuevoPrecio}
-                  onValor={setNuevoPrecio}
-                  ayuda={unidades > 0 ? `Costo por unidad en esta compra: ${clp(Math.round(objetivo.totalLinea / unidades))}` : undefined}
-                />
+                <CampoMonto etiqueta="Precio de venta" valor={nuevoPrecio} onValor={setNuevoPrecio} ayuda={unidades > 0 ? `Costo por unidad en esta compra: ${clp(costoUnitario)}` : undefined} />
                 <Campo etiqueta="Código de barras (opcional)" value={nuevoCodigo} onChange={(e) => setNuevoCodigo(e.target.value)} inputMode="numeric" />
               </div>
+              {nuevoPrecio !== '' ? (
+                <p className="text-cuerpo text-lab">
+                  Con ese precio: <Margen precioVenta={nuevoPrecio} costo={costoUnitario} />
+                </p>
+              ) : null}
+              <SugerenciasPrecio costo={costoUnitario} onElegir={setNuevoPrecio} />
               <p className="text-chico text-lab2">Se crea con SKU automático y sin stock; al recibir esta compra entra la cantidad y empieza a controlar stock.</p>
             </div>
           )}
@@ -327,10 +383,19 @@ function DialogoVincular({
               = <span className="num font-semibold text-lab">{unidades}</span> unidades
             </div>
           </div>
-          {elegido ? (
-            <p className="text-chico text-lab2">
-              Se vinculará a <span className="font-mono">{elegido.sku}</span> y el sistema lo recordará para la próxima factura de este proveedor.
-            </p>
+          {elegido && !creando ? (
+            <div className="flex flex-col gap-2 rounded-tarjeta border border-sep bg-bg3 p-3">
+              <p className="text-chico text-lab2">
+                Se vinculará a <span className="font-mono">{elegido.sku}</span> y el sistema lo recordará para la próxima factura de este proveedor.
+              </p>
+              <p className="text-cuerpo text-lab">
+                Costo por unidad en esta compra <span className="num font-semibold">{clp(costoUnitario)}</span> · precio de venta actual{' '}
+                <span className="num font-semibold">{clp(precioVentaNuevo === '' ? elegido.precioVenta : precioVentaNuevo)}</span> ·{' '}
+                <Margen precioVenta={precioVentaNuevo === '' ? elegido.precioVenta : precioVentaNuevo} costo={costoUnitario} />
+              </p>
+              <CampoMonto etiqueta="Cambiar el precio de venta (opcional)" valor={precioVentaNuevo} onValor={setPrecioVentaNuevo} ayuda="Si lo cambias, queda auditado como cambio de precio" />
+              <SugerenciasPrecio costo={costoUnitario} onElegir={setPrecioVentaNuevo} />
+            </div>
           ) : null}
           {error ? <p className="text-chico text-peligro">{error}</p> : null}
           <div className="flex justify-end gap-2">
@@ -377,13 +442,14 @@ interface LineaVista {
   cantidad: number;
   total: number;
   costoUnitario: number;
-  producto: { sku: string; nombre: string; costoReferencia?: number | null } | null;
+  totalOriginal?: number | null;
+  producto: { sku: string; nombre: string; costoReferencia?: number | null; precioVenta?: number } | null;
   aprendida?: boolean;
   stockVigente?: number | null;
   movimientoId?: string | null;
 }
 
-function TablaLineas({ lineas, editable, onVincular, onEditar, onEliminar }: { lineas: LineaVista[]; editable: boolean; onVincular?: (l: LineaVista) => void; onEditar?: (l: LineaVista) => void; onEliminar?: (l: LineaVista) => void }) {
+function TablaLineas({ lineas, editable, moneda = 'CLP', onVincular, onEditar, onEliminar }: { lineas: LineaVista[]; editable: boolean; moneda?: Moneda; onVincular?: (l: LineaVista) => void; onEditar?: (l: LineaVista) => void; onEliminar?: (l: LineaVista) => void }) {
   return (
     <div className="overflow-x-auto rounded-tarjeta border border-sep bg-bg">
       <table className="w-full min-w-[720px] border-collapse text-left text-cuerpo">
@@ -394,6 +460,7 @@ function TablaLineas({ lineas, editable, onVincular, onEditar, onEliminar }: { l
             <th className="px-3 py-2 text-right font-normal">Unidades</th>
             <th className="px-3 py-2 text-right font-normal">Total</th>
             <th className="px-3 py-2 text-right font-normal">Costo unit.</th>
+            <th className="px-3 py-2 text-right font-normal">Venta · margen</th>
             <th className="px-3 py-2 font-normal">Producto del maestro</th>
             {editable ? <th className="px-3 py-2" /> : null}
           </tr>
@@ -418,12 +485,25 @@ function TablaLineas({ lineas, editable, onVincular, onEditar, onEliminar }: { l
                   </div>
                 ) : null}
               </td>
-              <td className="num px-3 py-2 text-right text-lab">{clp(l.total)}</td>
+              <td className="num px-3 py-2 text-right text-lab">
+                {clp(l.total)}
+                {moneda !== 'CLP' && l.totalOriginal != null ? <div className="text-chico text-lab3">{usd(l.totalOriginal)}</div> : null}
+              </td>
               <td className="num px-3 py-2 text-right text-lab2">
                 {clp(l.costoUnitario)}
                 {l.producto?.costoReferencia != null && l.producto.costoReferencia !== l.costoUnitario ? (
                   <div className="text-chico text-lab3">antes {clp(l.producto.costoReferencia)}</div>
                 ) : null}
+              </td>
+              <td className="px-3 py-2 text-right">
+                {l.producto && l.producto.precioVenta !== undefined ? (
+                  <>
+                    <div className="num text-lab">{clp(l.producto.precioVenta)}</div>
+                    <Margen precioVenta={l.producto.precioVenta} costo={l.costoUnitario} />
+                  </>
+                ) : (
+                  <span className="text-chico text-lab3">—</span>
+                )}
               </td>
               <td className="px-3 py-2">
                 {l.producto ? (
@@ -464,9 +544,19 @@ function TablaLineas({ lineas, editable, onVincular, onEditar, onEliminar }: { l
   );
 }
 
-function ResumenTotales({ neto, impuestos, total, sumaLineas }: { neto: number; impuestos: number; total: number; sumaLineas?: { total: number } }) {
+function ResumenTotales({ neto, impuestos, total, sumaLineas, moneda = 'CLP', tipoCambio, gastosExtra, totalOriginal }: { neto: number; impuestos: number; total: number; sumaLineas?: { total: number }; moneda?: Moneda; tipoCambio?: number | null; gastosExtra?: number; totalOriginal?: number | null }) {
   return (
     <div className="flex flex-wrap justify-end gap-6 text-cuerpo">
+      {moneda !== 'CLP' ? (
+        <div>
+          <div className="text-chico text-lab3">Documento en {moneda}</div>
+          <div className="num text-lab">{totalOriginal != null ? usd(totalOriginal) : '—'}</div>
+          <div className="text-chico text-lab3">
+            {tipoCambio ? `× ${tipoCambio.toLocaleString('es-CL')} CLP` : 'sin tipo de cambio'}
+            {gastosExtra ? ` + ${clp(gastosExtra)} de gastos` : ''}
+          </div>
+        </div>
+      ) : null}
       <div>
         <div className="text-chico text-lab3">Neto</div>
         <div className="num text-lab">{clp(neto)}</div>
@@ -676,6 +766,11 @@ export function CompraNueva() {
   const [guardando, setGuardando] = useState(false);
   const [errorGuardar, setErrorGuardar] = useState('');
   const [modoManual, setModoManual] = useState(false);
+  // §6.6: el PDF se guarda en memoria para releerlo con el tipo de cambio y los gastos de importación.
+  const [archivo, setArchivo] = useState<{ base64: string; nombre: string } | null>(null);
+  const [tipoCambio, setTipoCambio] = useState('');
+  const [gastosExtra, setGastosExtra] = useState<number | ''>('');
+  const [releyendo, setReleyendo] = useState(false);
 
   const cargarProveedores = useCallback(
     () =>
@@ -698,22 +793,56 @@ export function CompraNueva() {
       .catch(() => {});
   }, [cargarProveedores]);
 
-  const alElegirArchivo = async (archivo: File | undefined) => {
+  const aplicarLectura = (r: Lectura) => {
+    setLectura(r);
+    setLineas(r.lineas);
+    setProveedor(r.proveedor);
+    setNumero(r.numeroDocumento ?? '');
+    setFechaDoc(r.fechaDocumento ?? hoyIso());
+    setTipoDoc(r.tipoDocumento);
+  };
+
+  const releerConMoneda = async () => {
     if (!archivo) return;
+    setReleyendo(true);
+    setErrorLectura(null);
+    try {
+      const r = await api<Lectura>('/compras/leer', {
+        method: 'POST',
+        body: JSON.stringify({ archivo: archivo.base64, nombre: archivo.nombre, tipoCambio: Number(tipoCambio.replace(',', '.')), gastosExtra: Number(gastosExtra) || 0 }),
+      });
+      // Se conservan las vinculaciones ya hechas a mano en esta pantalla.
+      const previas = new Map(lineas.map((l) => [l.orden, l]));
+      aplicarLectura({
+        ...r,
+        lineas: r.lineas.map((l) => {
+          const prev = previas.get(l.orden);
+          if (!prev || (!prev.productoId && prev.unidadesPorBulto === l.unidadesPorBulto)) return l;
+          const cantidad = calcularCantidad(l.bultos, prev.unidadesPorBulto, l.sueltas);
+          return { ...l, unidadesPorBulto: prev.unidadesPorBulto, cantidad, costoUnitario: Math.round(l.total / cantidad), productoId: prev.productoId, producto: prev.producto, aprendida: prev.aprendida };
+        }),
+      });
+    } catch (e) {
+      setErrorLectura({ mensaje: mensajeError(e) });
+    } finally {
+      setReleyendo(false);
+    }
+  };
+
+  const alElegirArchivo = async (archivoElegido: File | undefined) => {
+    if (!archivoElegido) return;
     setLeyendo(true);
     setErrorLectura(null);
     setLectura(null);
     setLineas([]);
     setModoManual(false);
+    setTipoCambio('');
+    setGastosExtra('');
     try {
-      const base64 = await leerComoBase64(archivo);
-      const r = await api<Lectura>('/compras/leer', { method: 'POST', body: JSON.stringify({ archivo: base64, nombre: archivo.name }) });
-      setLectura(r);
-      setLineas(r.lineas);
-      setProveedor(r.proveedor);
-      setNumero(r.numeroDocumento ?? '');
-      setFechaDoc(r.fechaDocumento ?? hoyIso());
-      setTipoDoc(r.tipoDocumento);
+      const base64 = await leerComoBase64(archivoElegido);
+      setArchivo({ base64, nombre: archivoElegido.name });
+      const r = await api<Lectura>('/compras/leer', { method: 'POST', body: JSON.stringify({ archivo: base64, nombre: archivoElegido.name }) });
+      aplicarLectura(r);
     } catch (e) {
       if (e instanceof ErrorApi && e.codigo === 'LECTOR_NO_DISPONIBLE') {
         setErrorLectura({
@@ -772,6 +901,10 @@ export function CompraNueva() {
           origen: lectura ? 'pdf' : 'manual',
           lector: lectura?.lector ?? 'manual',
           archivoNombre: lectura?.archivoNombre ?? null,
+          moneda: lectura?.moneda ?? 'CLP',
+          tipoCambio: lectura?.tipoCambio ?? null,
+          gastosExtra: lectura?.gastosExtra ?? 0,
+          totalOriginal: lectura?.totalOriginal ?? null,
           totales: lectura ? { neto: lectura.totales.neto, impuestos: lectura.totales.impuestos, total: lectura.totales.total } : null,
           advertencias: lectura?.advertencias ?? [],
           lineas: lineas.map((l) => ({
@@ -783,6 +916,7 @@ export function CompraNueva() {
             neto: l.neto,
             impuestos: l.impuestos,
             total: l.total,
+            totalOriginal: l.totalOriginal ?? null,
             productoId: l.productoId,
           })),
         }),
@@ -794,6 +928,7 @@ export function CompraNueva() {
           COMPRA_DUPLICADA: 'Ese documento ya está cargado para este proveedor.',
           NUMERO_REQUERIDO: 'Falta el número del documento.',
           FECHA_INVALIDA: 'La fecha no es válida.',
+          TIPO_CAMBIO_REQUERIDO: 'Falta el tipo de cambio del documento.',
         }),
       );
     } finally {
@@ -816,7 +951,7 @@ export function CompraNueva() {
     };
   }, [vinculando, lineas]);
 
-  const puedeGuardar = !!proveedor && numero.trim().length > 0 && !!ubicacionId && !guardando && !lectura?.yaCargada;
+  const puedeGuardar = !!proveedor && numero.trim().length > 0 && !!ubicacionId && !guardando && !lectura?.yaCargada && !lectura?.requiereTipoCambio;
 
   return (
     <div>
@@ -872,6 +1007,31 @@ export function CompraNueva() {
               {a}
             </Banner>
           ))}
+
+          {/* Moneda extranjera (§6.6) */}
+          {lectura && lectura.moneda !== 'CLP' ? (
+            <div className="rounded-tarjeta border border-sep bg-bg p-4">
+              <h2 className="mb-1 text-cuerpo font-semibold text-lab">Documento en {lectura.moneda}</h2>
+              <p className="mb-3 text-chico text-lab2">
+                Total {lectura.totalOriginal != null ? usd(lectura.totalOriginal) : '—'}. Indica a cuántos pesos se pagó cada dólar y, si los hay, los gastos de importación en pesos (flete, aduana, IVA de importación): se reparten entre las líneas según su monto y forman parte del costo.
+              </p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <Campo etiqueta={`Tipo de cambio (CLP por 1 ${lectura.moneda})`} value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)} inputMode="decimal" placeholder="950" />
+                <CampoMonto etiqueta="Gastos de importación (CLP, opcional)" valor={gastosExtra} onValor={setGastosExtra} />
+                <div className="self-end">
+                  <Boton variante={lectura.requiereTipoCambio ? 'principal' : 'secundario'} cargando={releyendo} deshabilitado={!(Number(tipoCambio.replace(',', '.')) > 0)} onClick={() => void releerConMoneda()}>
+                    Calcular costos en pesos
+                  </Boton>
+                </div>
+              </div>
+              {lectura.tipoCambio ? (
+                <p className="mt-2 text-chico text-ok">
+                  Costos calculados con {lectura.tipoCambio.toLocaleString('es-CL')} CLP por {lectura.moneda}
+                  {lectura.gastosExtra ? ` y ${clp(lectura.gastosExtra)} de gastos` : ''}.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* Proveedor */}
           <div className="rounded-tarjeta border border-sep bg-bg p-4">
@@ -936,10 +1096,11 @@ export function CompraNueva() {
               </div>
               <TablaLineas
                 editable
+                moneda={lectura.moneda}
                 lineas={lineas.map((l, i) => ({ ...l, clave: String(i), stockVigente: null }))}
                 onVincular={(l) => setVinculando(Number(l.clave))}
               />
-              <ResumenTotales {...lectura.totales} />
+              <ResumenTotales {...lectura.totales} moneda={lectura.moneda} tipoCambio={lectura.tipoCambio} gastosExtra={lectura.gastosExtra} totalOriginal={lectura.totalOriginal} />
             </div>
           ) : (
             <p className="text-chico text-lab2">Las líneas se agregan en el borrador, una por una.</p>
@@ -953,7 +1114,7 @@ export function CompraNueva() {
               </Boton>
             </div>
             <div className="w-[240px]">
-              <Boton variante="principal" cargando={guardando} deshabilitado={!puedeGuardar} motivoDeshabilitado={!proveedor ? 'Falta el proveedor' : !numero.trim() ? 'Falta el número' : undefined} onClick={() => void guardar()}>
+              <Boton variante="principal" cargando={guardando} deshabilitado={!puedeGuardar} motivoDeshabilitado={!proveedor ? 'Falta el proveedor' : !numero.trim() ? 'Falta el número' : lectura?.requiereTipoCambio ? 'Falta el tipo de cambio' : undefined} onClick={() => void guardar()}>
                 Guardar borrador
               </Boton>
             </div>
@@ -1215,6 +1376,12 @@ export function CompraDetalle() {
             {compra.origen === 'pdf' ? `Leída del PDF${compra.archivoNombre ? ` «${compra.archivoNombre}»` : ''}` : 'Digitada a mano'} por {compra.usuario.nombre} el {fecha(compra.creadoEn)}.
             {compra.recibidaEn && compra.recibidaPor ? ` Recibida por ${compra.recibidaPor.nombre} el ${fecha(compra.recibidaEn)}.` : ''}
           </div>
+          {compra.moneda !== 'CLP' ? (
+            <div className="mt-2 text-chico text-lab2">
+              Documento en {compra.moneda}: {compra.totalOriginal != null ? usd(compra.totalOriginal) : '—'} × {compra.tipoCambio?.toLocaleString('es-CL') ?? '?'} CLP
+              {compra.gastosExtra ? ` + ${clp(compra.gastosExtra)} de gastos de importación` : ''}.
+            </div>
+          ) : null}
           {compra.nota ? <div className="mt-2 whitespace-pre-line text-chico text-lab2">{compra.nota}</div> : null}
         </div>
         <div className="rounded-tarjeta border border-sep bg-bg p-4">
@@ -1251,6 +1418,7 @@ export function CompraDetalle() {
       ) : (
         <TablaLineas
           editable={borrador}
+          moneda={compra.moneda}
           lineas={compra.lineas.map((l) => ({ ...l, clave: l.id }))}
           onVincular={(l) => setVinculando(compra.lineas.find((x) => x.id === l.clave) ?? null)}
           onEditar={(l) => {
@@ -1261,7 +1429,7 @@ export function CompraDetalle() {
         />
       )}
       <div className="mt-3">
-        <ResumenTotales neto={compra.neto} impuestos={compra.impuestos} total={compra.total} />
+        <ResumenTotales neto={compra.neto} impuestos={compra.impuestos} total={compra.total} moneda={compra.moneda} tipoCambio={compra.tipoCambio} gastosExtra={compra.gastosExtra} totalOriginal={compra.totalOriginal} />
       </div>
 
       {borrador ? (

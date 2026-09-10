@@ -1,7 +1,8 @@
 // Reglas puras de compras — docs/11-SDD-etapa6-compras.md §6.
 // Aquí se calcula y se cuadra; leer el PDF y escribir en la base viven en src/api/compras.
 
-export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura';
+export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui';
+export type Moneda = 'CLP' | 'USD';
 export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';
 
 /** Una línea tal como la entrega un lector (o la digita una persona). Montos en CLP enteros. */
@@ -14,6 +15,8 @@ export interface LineaLeida {
   neto: number;
   impuestos: number; // IVA + específicos de la línea
   total: number; // neto + impuestos
+  /** Monto de la línea en la moneda del documento cuando no es CLP (con decimales); informativo. */
+  totalOriginal?: number | null;
 }
 
 export interface LineaCalculada extends LineaLeida {
@@ -30,12 +33,16 @@ export interface TotalesLeidos {
 /** Lo que devuelve un lector: cabecera + líneas + lo que no pudo entender (para la persona). */
 export interface DocumentoLeido {
   lector: LectorFactura;
+  /** Moneda de los montos del documento. Si no es CLP, las líneas traen `totalOriginal` y los CLP se calculan con el tipo de cambio (§6.6). */
+  moneda: Moneda;
   proveedor: { rut: string | null; nombre: string | null };
   tipoDocumento: TipoDocumentoCompra;
   numeroDocumento: string | null;
   fechaDocumento: string | null; // ISO yyyy-mm-dd
   lineas: LineaLeida[];
   totales: TotalesLeidos | null;
+  /** Total del documento en su moneda cuando no es CLP. */
+  totalOriginal?: number | null;
   advertencias: string[];
 }
 
@@ -129,6 +136,52 @@ export function cuadrarTotales(lineas: LineaCalculada[], documento: TotalesLeido
     }
   }
   return { ...documento, sumaLineas: suma, advertencias };
+}
+
+/** "1,398.90" → 1398.9 · ".00" → 0 · "34.80" → 34.8. Formato de EE. UU.: coma de miles, punto decimal. */
+export function parsearNumeroUs(texto: string): number | null {
+  const limpio = texto.trim().replace(/[\s$]/g, '');
+  if (!/^-?(\d{1,3}(,\d{3})*|\d*)(\.\d+)?$/.test(limpio) || limpio === '' || limpio === '-') return null;
+  const n = Number(limpio.replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Documento en moneda extranjera (§6.6): pasa cada línea a CLP con el tipo de cambio y reparte los
+ * gastos de importación (flete, aduana, IVA de importación, en CLP) según el monto original de cada
+ * línea, con el resto en la última línea con monto, para que Σ total = round(totalOriginal × tc) + gastos.
+ * En CLP no hay desglose de impuestos: neto = total, impuestos = 0 (los impuestos de importación van en gastos).
+ */
+export function convertirLineasAClp(lineas: LineaLeida[], tipoCambio: number, gastosExtra: number): LineaLeida[] {
+  const base = lineas.map((l) => l.totalOriginal ?? 0);
+  const sumaBase = base.reduce((a, b) => a + b, 0);
+  const gastos = Math.max(0, Math.round(gastosExtra));
+  let asignado = 0;
+  let ultimaConMonto = -1;
+  base.forEach((b, i) => {
+    if (b > 0) ultimaConMonto = i;
+  });
+  return lineas.map((l, i) => {
+    const enClp = Math.round((l.totalOriginal ?? 0) * tipoCambio);
+    let parte = sumaBase > 0 ? Math.round((gastos * base[i]!) / sumaBase) : 0;
+    if (i === ultimaConMonto) parte = gastos - asignado;
+    asignado += parte;
+    const total = enClp + parte;
+    return { ...l, neto: total, impuestos: 0, total };
+  });
+}
+
+/** Margen sobre el precio de venta, en %: (venta − costo) / venta. Null si no hay precio. */
+export function margenPorcentaje(precioVenta: number, costoUnitario: number): number | null {
+  if (!(precioVenta > 0)) return null;
+  return Math.round(((precioVenta - costoUnitario) / precioVenta) * 1000) / 10;
+}
+
+/** Precio de venta que deja el margen pedido (en %), redondeado hacia arriba al múltiplo indicado (CLP). */
+export function precioParaMargen(costoUnitario: number, margenPct: number, multiplo = 10): number {
+  if (!(margenPct < 100)) return 0;
+  const bruto = costoUnitario / (1 - margenPct / 100);
+  return Math.ceil(bruto / multiplo) * multiplo;
 }
 
 /** "09-09-2026" | "09/09/2026" → "2026-09-09"; "2026-09-09" tal cual; otra cosa → null. */

@@ -737,6 +737,7 @@ enum LectorFactura {
   andina // Embotelladora Andina (Coca-Cola), RUT 91.144.000-8: factura electrónica en cajas/botellas
   nico // Distribuidora Nico: «pedido» de su tienda web (sin RUT, precios con IVA), se reconoce por el nombre
   nico_factura // Distribuidora Nico: factura electrónica (RUT 10.879.175-6), líneas netas, IVA e ILA en el pie
+  coqui // Coqui Hobby Distribution (EE. UU.): Sales Order en USD; CLP con tipo de cambio + gastos de importación
 }
 
 enum TipoDocumentoCompra {
@@ -794,6 +795,10 @@ model Compra {
   origen          String // 'pdf' | 'manual'
   lector          LectorFactura       @default(manual)
   archivoNombre   String?
+  moneda          String              @default("CLP") // 'CLP' | 'USD' (§6.6)
+  tipoCambio      Float? // CLP por unidad de la moneda, el día de la carga; null en CLP
+  gastosExtra     Int                 @default(0) // CLP: flete, aduana, IVA de importación… repartidos entre las líneas
+  totalOriginal   Float? // total del documento en su moneda, si no es CLP
   neto            Int                 @default(0) // CLP
   impuestos       Int                 @default(0) // IVA + impuestos específicos, CLP
   total           Int                 @default(0) // CLP
@@ -830,6 +835,7 @@ model CompraLinea {
   impuestos        Int      @default(0) // IVA + específicos de la línea, CLP
   total            Int      @default(0) // neto + impuestos, CLP
   costoUnitario    Int      @default(0) // total / cantidad, redondeado: lo que cuesta cada unidad puesta en la tienda
+  totalOriginal    Float? // monto de la línea en la moneda del documento, si no es CLP (informativo)
   movimientoId     String? // MovimientoStock creado al recibir (null si no entró)
 
   @@index([compraId, orden])

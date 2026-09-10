@@ -145,6 +145,7 @@ export function leerNicoFactura(paginas: PaginaTexto[]): DocumentoLeido {
 
   return {
     lector: 'nico_factura',
+    moneda: 'CLP',
     proveedor: { rut: RUT_NICO, nombre: NOMBRE_NICO },
     tipoDocumento: 'factura',
     numeroDocumento,

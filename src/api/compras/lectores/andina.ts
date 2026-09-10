@@ -119,6 +119,7 @@ export function leerAndina(paginas: PaginaTexto[]): DocumentoLeido {
 
   return {
     lector: 'andina',
+    moneda: 'CLP',
     proveedor: { rut: RUT_ANDINA, nombre: 'Embotelladora Andina S.A.' },
     tipoDocumento: tipo,
     numeroDocumento,

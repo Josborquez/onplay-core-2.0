@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import {
   calcularLinea,
+  convertirLineasAClp,
   cuadrarTotales,
   lectorPorRut,
   normalizarRut,
@@ -61,7 +62,17 @@ function lineaDesdeCuerpo(l: unknown): LineaLeida | null {
     neto: entero(o.neto),
     impuestos: entero(o.impuestos),
     total: entero(o.total),
+    totalOriginal: typeof o.totalOriginal === 'number' && Number.isFinite(o.totalOriginal) ? o.totalOriginal : null,
   };
+}
+
+function monedaDe(v: unknown): 'CLP' | 'USD' {
+  return v === 'USD' ? 'USD' : 'CLP';
+}
+
+function tipoCambioDe(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(',', '.')) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 /** Mapeos aprendidos del proveedor para un conjunto de códigos. */
@@ -184,6 +195,8 @@ export default async function rutasCompras(app: FastifyInstance) {
     archivo?: unknown; // base64 del PDF
     nombre?: unknown;
     proveedorId?: unknown;
+    tipoCambio?: unknown; // CLP por unidad de la moneda del documento (solo si no es CLP)
+    gastosExtra?: unknown; // CLP: flete, aduana, IVA de importación
   }
 
   interface LineaPropuesta extends LineaCalculada {
@@ -229,6 +242,22 @@ export default async function rutasCompras(app: FastifyInstance) {
     }
     const lectura: DocumentoLeido = lector.leer(paginas);
 
+    // §6.6: documento en moneda extranjera → los CLP salen del tipo de cambio + gastos de importación.
+    const moneda = lectura.moneda;
+    const tipoCambio = moneda === 'CLP' ? null : tipoCambioDe(b.tipoCambio);
+    const gastosExtra = moneda === 'CLP' ? 0 : Math.max(0, entero(b.gastosExtra));
+    const requiereTipoCambio = moneda !== 'CLP' && tipoCambio === null;
+    const lineasBase = moneda !== 'CLP' && tipoCambio !== null ? convertirLineasAClp(lectura.lineas, tipoCambio, gastosExtra) : lectura.lineas;
+    const totalesDocumento =
+      moneda === 'CLP'
+        ? lectura.totales
+        : tipoCambio !== null && lectura.totalOriginal != null
+          ? (() => {
+              const t = Math.round(lectura.totalOriginal * tipoCambio) + gastosExtra;
+              return { neto: t, impuestos: 0, total: t };
+            })()
+          : null;
+
     // Proveedor: el fijado; si no, el del RUT que leyó el lector; si el documento no trae RUT
     // (Nico manda un pedido web), el proveedor activo que use ese lector.
     const proveedor =
@@ -248,8 +277,9 @@ export default async function rutasCompras(app: FastifyInstance) {
       : [];
     const porId = new Map(productos.map((p) => [p.id, p]));
     const advertencias = [...lectura.advertencias];
+    if (requiereTipoCambio) advertencias.push(`El documento está en ${moneda}: indica el tipo de cambio (y los gastos de importación, si los hay) para calcular los costos en pesos.`);
     const lineas: LineaPropuesta[] = [];
-    lectura.lineas.forEach((l, i) => {
+    lineasBase.forEach((l, i) => {
       const mapeo = l.codigoProveedor ? mapeos.get(l.codigoProveedor) : undefined;
       const conBulto = mapeo ? { ...l, unidadesPorBulto: mapeo.unidadesPorBulto } : l;
       const calc = calcularLinea(conBulto);
@@ -265,7 +295,7 @@ export default async function rutasCompras(app: FastifyInstance) {
         aprendida: !!mapeo,
       });
     });
-    const totales = cuadrarTotales(lineas, lectura.totales);
+    const totales = cuadrarTotales(lineas, totalesDocumento);
     advertencias.push(...totales.advertencias);
 
     const yaCargada =
@@ -285,6 +315,11 @@ export default async function rutasCompras(app: FastifyInstance) {
       tipoDocumento: lectura.tipoDocumento,
       numeroDocumento: lectura.numeroDocumento,
       fechaDocumento: lectura.fechaDocumento,
+      moneda,
+      tipoCambio,
+      gastosExtra,
+      totalOriginal: lectura.totalOriginal ?? null,
+      requiereTipoCambio,
       lineas,
       totales: { neto: totales.neto, impuestos: totales.impuestos, total: totales.total, sumaLineas: totales.sumaLineas },
       advertencias,
@@ -307,6 +342,10 @@ export default async function rutasCompras(app: FastifyInstance) {
     totales?: unknown;
     advertencias?: unknown;
     lineas?: unknown;
+    moneda?: unknown;
+    tipoCambio?: unknown;
+    gastosExtra?: unknown;
+    totalOriginal?: unknown;
   }
 
   app.post<{ Body: CuerpoCompra }>('/compras', encargado, async (req, reply) => {
@@ -321,6 +360,11 @@ export default async function rutasCompras(app: FastifyInstance) {
     const tipoDocumento = TIPOS_DOCUMENTO.includes(b.tipoDocumento as TipoDocumentoCompra) ? (b.tipoDocumento as TipoDocumentoCompra) : 'factura';
     const origen = b.origen === 'pdf' ? 'pdf' : 'manual';
     const lector = typeof b.lector === 'string' && LECTORES_VALIDOS.includes(b.lector as LectorFactura) ? (b.lector as LectorFactura) : 'manual';
+    const moneda = monedaDe(b.moneda);
+    const tipoCambio = moneda === 'CLP' ? null : tipoCambioDe(b.tipoCambio);
+    if (moneda !== 'CLP' && tipoCambio === null) return reply.code(422).send({ error: 'TIPO_CAMBIO_REQUERIDO', detalle: `El documento está en ${moneda}: falta el tipo de cambio.` });
+    const gastosExtra = moneda === 'CLP' ? 0 : Math.max(0, entero(b.gastosExtra));
+    const totalOriginal = typeof b.totalOriginal === 'number' && Number.isFinite(b.totalOriginal) ? b.totalOriginal : null;
 
     // Ubicación: la indicada, o la publicable (bodega) por defecto (D-E6-2).
     const ubicacion =
@@ -378,6 +422,10 @@ export default async function rutasCompras(app: FastifyInstance) {
           origen,
           lector,
           archivoNombre: typeof b.archivoNombre === 'string' ? b.archivoNombre.slice(0, 191) : null,
+          moneda,
+          tipoCambio,
+          gastosExtra,
+          totalOriginal,
           neto: totales.neto,
           impuestos: totales.impuestos,
           total: totales.total,
@@ -398,6 +446,7 @@ export default async function rutasCompras(app: FastifyInstance) {
               impuestos: l.impuestos,
               total: l.total,
               costoUnitario: l.costoUnitario,
+              totalOriginal: moneda === 'CLP' ? null : (l.totalOriginal ?? null),
             })),
           },
         },
