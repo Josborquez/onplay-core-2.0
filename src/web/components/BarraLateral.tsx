@@ -25,6 +25,7 @@ const ITEMS: { a: string; etiqueta: string; icono: ReactNode; rol: RolUsuario }[
   { a: '/admin/snacks', etiqueta: 'Alta de snack', icono: '⊞', rol: 'encargado' },
   { a: '/admin/stock', etiqueta: 'Stock', icono: '▥', rol: 'encargado' }, // E2 V19
   { a: '/admin/recuentos', etiqueta: 'Recuentos', icono: '☑', rol: 'encargado' }, // E2 V20
+  { a: '/admin/compras', etiqueta: 'Compras', icono: '⇩', rol: 'encargado' }, // E6 V25
   { a: '/admin/ventas', etiqueta: 'Ventas', icono: '◈', rol: 'encargado' },
   { a: '/admin/turnos', etiqueta: 'Turnos', icono: '▦', rol: 'encargado' },
   { a: '/admin/reportes', etiqueta: 'Reportes', icono: '◫', rol: 'encargado' }, // R-026

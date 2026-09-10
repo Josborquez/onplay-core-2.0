@@ -1,0 +1,144 @@
+// Tipos de la Etapa 6 (docs/11-SDD §5 y §7) que usa la pantalla de Compras.
+
+export type LectorFactura = 'manual' | 'andina';
+export type EstadoCompra = 'borrador' | 'recibida' | 'anulada';
+export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';
+
+export const ETIQUETA_TIPO_DOC: Record<TipoDocumentoCompra, string> = {
+  factura: 'Factura',
+  boleta: 'Boleta',
+  guia: 'Guía',
+  otro: 'Otro',
+};
+
+export const ETIQUETA_ESTADO_COMPRA: Record<EstadoCompra, { texto: string; tono: 'alerta' | 'ok' | 'neutro' }> = {
+  borrador: { texto: 'borrador', tono: 'alerta' },
+  recibida: { texto: 'recibida', tono: 'ok' },
+  anulada: { texto: 'anulada', tono: 'neutro' },
+};
+
+export interface Proveedor {
+  id: string;
+  nombre: string;
+  rut: string | null;
+  lector: LectorFactura;
+  activo: boolean;
+  notas: string | null;
+  compras?: number;
+  productosVinculados?: number;
+}
+
+export interface OpcionLector {
+  clave: LectorFactura;
+  nombre: string;
+}
+
+export interface ProductoCompra {
+  id: string;
+  sku: string;
+  nombre: string;
+  controlaStock: boolean;
+  costoReferencia: number | null;
+  precioVenta: number;
+  tipo: string;
+}
+
+export interface LineaCompra {
+  id: string;
+  orden: number;
+  codigoProveedor: string | null;
+  descripcion: string;
+  productoId: string | null;
+  producto: ProductoCompra | null;
+  bultos: number;
+  unidadesPorBulto: number;
+  sueltas: number;
+  cantidad: number;
+  neto: number;
+  impuestos: number;
+  total: number;
+  costoUnitario: number;
+  movimientoId: string | null;
+  stockVigente?: number | null;
+}
+
+export interface CompraResumen {
+  id: string;
+  proveedor: { id: string; nombre: string };
+  tipoDocumento: TipoDocumentoCompra;
+  numeroDocumento: string;
+  fechaDocumento: string;
+  estado: EstadoCompra;
+  origen: string;
+  total: number;
+  usuario: { nombre: string };
+  totalLineas: number;
+  sinVincular: number;
+  unidades: number;
+  creadoEn: string;
+}
+
+export interface CompraDetalle {
+  id: string;
+  proveedor: { id: string; nombre: string; rut: string | null; lector: LectorFactura };
+  ubicacion: { id: string; codigo: string; nombre: string };
+  tipoDocumento: TipoDocumentoCompra;
+  numeroDocumento: string;
+  fechaDocumento: string;
+  estado: EstadoCompra;
+  origen: string;
+  lector: LectorFactura;
+  archivoNombre: string | null;
+  neto: number;
+  impuestos: number;
+  total: number;
+  advertencias: string[] | null;
+  nota: string | null;
+  usuario: { nombre: string };
+  recibidaPor: { nombre: string } | null;
+  recibidaEn: string | null;
+  creadoEn: string;
+  lineas: LineaCompra[];
+}
+
+/** Lo que devuelve POST /compras/leer: una propuesta que la persona revisa antes de guardar. */
+export interface LineaPropuesta {
+  orden: number;
+  codigoProveedor: string | null;
+  descripcion: string;
+  bultos: number;
+  unidadesPorBulto: number;
+  sueltas: number;
+  cantidad: number;
+  neto: number;
+  impuestos: number;
+  total: number;
+  costoUnitario: number;
+  productoId: string | null;
+  producto: ProductoCompra | null;
+  aprendida: boolean;
+}
+
+export interface Lectura {
+  lector: LectorFactura;
+  lectorNombre: string;
+  archivoNombre: string | null;
+  proveedor: Proveedor | null;
+  proveedorSugerido: { nombre: string; rut: string | null; lector: LectorFactura } | null;
+  tipoDocumento: TipoDocumentoCompra;
+  numeroDocumento: string | null;
+  fechaDocumento: string | null;
+  lineas: LineaPropuesta[];
+  totales: { neto: number; impuestos: number; total: number; sumaLineas: { neto: number; impuestos: number; total: number } };
+  advertencias: string[];
+  yaCargada: { id: string; estado: EstadoCompra } | null;
+  sinVincular: number;
+}
+
+export interface ResultadoBusquedaProducto {
+  id: string;
+  sku: string;
+  nombre: string;
+  precioVenta: number;
+  controlaStock?: boolean;
+}

@@ -26,6 +26,7 @@ import { Discrepancias } from './pantallas/admin/Discrepancias.js';
 import { PedidosOnline } from './pantallas/admin/PedidosOnline.js';
 import { TurnosAdmin } from './pantallas/admin/TurnosAdmin.js';
 import { VentasAdmin } from './pantallas/admin/VentasAdmin.js';
+import { Compras, CompraNueva, CompraDetalle } from './pantallas/admin/Compras.js';
 import { ProveedorSesion, useSesion } from './sesion.js';
 import { useLateralPlegada, useTema } from './tema.js';
 import { rolAlcanza, type RolUsuario } from './tipos.js';
@@ -140,6 +141,9 @@ export function App() {
           <Route path="/admin/sistema" element={admin(<SistemaPagina />, 'admin')} /> {/* 2.0 §5.5 */}
           <Route path="/admin/discrepancias" element={admin(<Discrepancias />)} /> {/* E3 V13 */}
           <Route path="/admin/pedidos" element={admin(<PedidosOnline />)} /> {/* E3 V14 */}
+          <Route path="/admin/compras" element={admin(<Compras />)} /> {/* E6 V25 */}
+          <Route path="/admin/compras/nueva" element={admin(<CompraNueva />)} /> {/* E6 V26 */}
+          <Route path="/admin/compras/:id" element={admin(<CompraDetalle />)} /> {/* E6 V27 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

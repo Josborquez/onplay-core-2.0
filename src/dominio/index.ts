@@ -79,3 +79,21 @@ export {
   type EntradaDecisionStock,
   type EntradaDecisionPrecio,
 } from './sync.js';
+// E6 — docs/11-SDD-etapa6-compras.md §6
+export {
+  calcularLinea,
+  cuadrarTotales,
+  parsearNumeroCl,
+  unidadesPorBultoDesdeDescripcion,
+  fechaIsoDesdeCl,
+  lectorPorRut,
+  LECTOR_POR_RUT,
+  type LectorFactura,
+  type TipoDocumentoCompra,
+  type LineaLeida,
+  type LineaCalculada,
+  type TotalesLeidos,
+  type TotalesCuadrados,
+  type DocumentoLeido,
+  type ErrorCompra,
+} from './compra.js';

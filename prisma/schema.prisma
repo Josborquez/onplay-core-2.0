@@ -148,6 +148,7 @@ model Producto {
   precioVenta      Int          @default(0) // CLP, sin decimales
   controlaStock    Boolean      @default(false) // Principio P4; E2 lo enciende por recuento (M5)
   stockMinimo      Int          @default(0) // E2 §5.2: umbral de «stock bajo»; 0 = sin alerta de bajo
+  costoReferencia  Int? // E6 §5.2 (01 §6.2): último costo unitario bruto recibido, CLP. Null hasta la primera compra
   activo           Boolean      @default(true)
   posibleDuplicado Boolean      @default(false) // marcado por el importador, §6.6
   imagenUrl        String?      @db.Text
@@ -163,6 +164,8 @@ model Producto {
   stock            StockActual[] // E2
   recuentoLineas   RecuentoLinea[] // E2
   lineasPedido     PedidoCanalLinea[] // E3
+  proveedores      ProductoProveedor[] // E6
+  lineasCompra     CompraLinea[] // E6
 
   @@index([tipo, activo])
   @@index([codigoBarras])
@@ -230,6 +233,8 @@ model Usuario {
   movimientosCaja        MovimientoCaja[] // E2
   discrepanciasResueltas Discrepancia[]       @relation("DiscrepanciasResueltas") // E3
   corridas               SyncCorrida[] // E3
+  compras                Compra[]             @relation("ComprasRegistradas") // E6
+  comprasRecibidas       Compra[]             @relation("ComprasRecibidas") // E6
 }
 
 model TurnoCaja {
@@ -436,6 +441,7 @@ model Ubicacion {
   movimientos MovimientoStock[]
   stock       StockActual[]
   recuentos   Recuento[]
+  compras     Compra[] // E6
 }
 
 // Libro append-only (P5). El stock es SUM(cantidad). Nunca se actualiza ni se borra una fila.
@@ -718,4 +724,112 @@ model PedidoCanalLinea {
 
   @@unique([pedidoId, externoItemId])
   @@index([pedidoId])
+}
+
+// ---------------------------------------------------------------------------
+// E6 — Compras, proveedores y márgenes (docs/11-SDD-etapa6-compras.md §5)
+// Fase 1: proveedor, factura de compra leída por distribuidor y recepción al libro de stock.
+// ---------------------------------------------------------------------------
+
+// Qué lector entiende los documentos del proveedor. `manual` = se digita; los demás leen el PDF.
+enum LectorFactura {
+  manual
+  andina // Embotelladora Andina (Coca-Cola), RUT 91.144.000-8: factura electrónica en cajas/botellas
+}
+
+enum TipoDocumentoCompra {
+  factura
+  boleta
+  guia
+  otro
+}
+
+enum EstadoCompra {
+  borrador // leída o digitada; se puede corregir y vincular productos. No toca el stock
+  recibida // ingresó al libro (movimientos `compra` con referencia a la compra). Inmutable
+  anulada // borrador descartado con nota. Una recibida NO se anula: se corrige con merma/ajuste (P9)
+}
+
+model Proveedor {
+  id       String        @id @default(cuid())
+  nombre   String
+  rut      String?       @unique // normalizado "91144000-8"; el lector lo usa para reconocer al proveedor
+  lector   LectorFactura @default(manual)
+  activo   Boolean       @default(true)
+  notas    String?       @db.Text
+  creadoEn DateTime      @default(now())
+
+  productos ProductoProveedor[]
+  compras   Compra[]
+}
+
+// Correspondencia aprendida: código del proveedor → producto del maestro, con unidades por bulto.
+model ProductoProveedor {
+  id                    String    @id @default(cuid())
+  proveedorId           String
+  proveedor             Proveedor @relation(fields: [proveedorId], references: [id])
+  codigoProveedor       String // tal como viene en el documento ("122629")
+  descripcionProveedor  String? // última descripción vista, informativa
+  productoId            String
+  producto              Producto  @relation(fields: [productoId], references: [id])
+  unidadesPorBulto      Int       @default(1) // 12 si la caja trae 12 y se vende por unidad
+  actualizadoEn         DateTime  @updatedAt
+
+  @@unique([proveedorId, codigoProveedor])
+  @@index([productoId])
+}
+
+model Compra {
+  id              String              @id @default(cuid())
+  proveedorId     String
+  proveedor       Proveedor           @relation(fields: [proveedorId], references: [id])
+  tipoDocumento   TipoDocumentoCompra @default(factura)
+  numeroDocumento String // "097397951"
+  fechaDocumento  DateTime
+  ubicacionId     String // dónde entra la mercadería al recibir (default: la publicable = bodega)
+  ubicacion       Ubicacion           @relation(fields: [ubicacionId], references: [id])
+  estado          EstadoCompra        @default(borrador)
+  origen          String // 'pdf' | 'manual'
+  lector          LectorFactura       @default(manual)
+  archivoNombre   String?
+  neto            Int                 @default(0) // CLP
+  impuestos       Int                 @default(0) // IVA + impuestos específicos, CLP
+  total           Int                 @default(0) // CLP
+  advertencias    Json? // lo que el lector no pudo cuadrar (texto para la persona)
+  nota            String?             @db.Text
+  usuarioId       String // quién la cargó
+  usuario         Usuario             @relation("ComprasRegistradas", fields: [usuarioId], references: [id])
+  recibidaPorId   String?
+  recibidaPor     Usuario?            @relation("ComprasRecibidas", fields: [recibidaPorId], references: [id])
+  recibidaEn      DateTime?
+  creadoEn        DateTime            @default(now())
+  actualizadoEn   DateTime            @updatedAt
+
+  lineas CompraLinea[]
+
+  @@unique([proveedorId, numeroDocumento]) // la misma factura no se carga dos veces
+  @@index([estado, fechaDocumento])
+}
+
+model CompraLinea {
+  id               String   @id @default(cuid())
+  compraId         String
+  compra           Compra   @relation(fields: [compraId], references: [id])
+  orden            Int
+  codigoProveedor  String?
+  descripcion      String // congelada, tal como vino
+  productoId       String? // null = sin vincular todavía; al recibir, lo sin producto NO entra al stock
+  producto         Producto? @relation(fields: [productoId], references: [id])
+  bultos           Int      @default(0) // cajas
+  unidadesPorBulto Int      @default(1)
+  sueltas          Int      @default(0) // unidades fuera de caja
+  cantidad         Int // unidades que entran = bultos × unidadesPorBulto + sueltas
+  neto             Int      @default(0) // CLP de la línea, sin impuestos
+  impuestos        Int      @default(0) // IVA + específicos de la línea, CLP
+  total            Int      @default(0) // neto + impuestos, CLP
+  costoUnitario    Int      @default(0) // total / cantidad, redondeado: lo que cuesta cada unidad puesta en la tienda
+  movimientoId     String? // MovimientoStock creado al recibir (null si no entró)
+
+  @@index([compraId, orden])
+  @@index([productoId])
 }
