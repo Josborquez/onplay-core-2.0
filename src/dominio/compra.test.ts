@@ -155,6 +155,7 @@ describe('lectorPorRut y fechas', () => {
     expect(fechaIsoDesdeCl('09-09-2026')).toBe('2026-09-09');
     expect(fechaIsoDesdeCl('01/02/2026')).toBe('2026-02-01');
     expect(fechaIsoDesdeCl('2026-09-09')).toBe('2026-09-09');
+    expect(fechaIsoDesdeCl('1/9/2026')).toBe('2026-09-01'); // Asmodee: sin ceros
     expect(fechaIsoDesdeCl('ayer')).toBeNull();
   });
 });

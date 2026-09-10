@@ -1,7 +1,7 @@
 // Reglas puras de compras — docs/11-SDD-etapa6-compras.md §6.
 // Aquí se calcula y se cuadra; leer el PDF y escribir en la base viven en src/api/compras.
 
-export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui' | 'devir';
+export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui' | 'devir' | 'asmodee';
 export type Moneda = 'CLP' | 'USD';
 export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';
 
@@ -56,6 +56,7 @@ export const LECTOR_POR_RUT: Readonly<Record<string, LectorFactura>> = {
   '91144000-8': 'andina', // Embotelladora Andina S.A. (Coca-Cola)
   '10879175-6': 'nico_factura', // Distribuidora Nico (Oscar Fernando Leiva Sanhueza): factura; su pedido web usa `nico`
   '76632420-7': 'devir', // Devir Chile Limitada
+  '76353094-9': 'asmodee', // Asmodee Chile (Importadora y Comercializadora Skyship SPA)
 };
 
 export function lectorPorRut(rutNormalizado: string | null | undefined): LectorFactura | null {
@@ -187,11 +188,11 @@ export function precioParaMargen(costoUnitario: number, margenPct: number, multi
   return Math.ceil(bruto / multiplo) * multiplo;
 }
 
-/** "09-09-2026" | "09/09/2026" → "2026-09-09"; "2026-09-09" tal cual; otra cosa → null. */
+/** "09-09-2026" | "09/09/2026" | "1/9/2026" → "2026-09-09"; "2026-09-09" tal cual; otra cosa → null. */
 export function fechaIsoDesdeCl(texto: string): string | null {
   const t = texto.trim();
-  let m = /^(\d{2})[-/](\d{2})[-/](\d{4})$/.exec(t);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  let m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(t);
+  if (m) return `${m[3]}-${m[2]!.padStart(2, '0')}-${m[1]!.padStart(2, '0')}`;
   m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
   if (m) return t;
   return null;
