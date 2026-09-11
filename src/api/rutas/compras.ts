@@ -5,11 +5,13 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import {
+  calcularImportacion,
   calcularLinea,
   convertirLineasAClp,
   cuadrarTotales,
   lectorPorRut,
   normalizarRut,
+  resumenImportacion,
   type DocumentoLeido,
   type LectorFactura,
   type LineaCalculada,
@@ -20,6 +22,7 @@ import { prisma } from '../db.js';
 import { ErrorStock, registrarMovimiento } from '../stock/libro.js';
 import { extraerPaginasPdf } from '../compras/pdf.js';
 import { detectarLector, lectorPorClave, LECTORES } from '../compras/lectores/index.js';
+import { leerDin, reconoceDin } from '../compras/lectores/din.js';
 
 const LECTORES_VALIDOS: LectorFactura[] = ['manual', ...LECTORES.map((l) => l.clave)];
 const TIPOS_DOCUMENTO: TipoDocumentoCompra[] = ['factura', 'boleta', 'guia', 'otro'];
@@ -41,7 +44,45 @@ const INCLUIR_COMPRA = {
   usuario: { select: { nombre: true } },
   recibidaPor: { select: { nombre: true } },
   lineas: { orderBy: { orden: 'asc' }, include: { producto: { select: SELECT_PRODUCTO } } },
+  gastos: { orderBy: { creadoEn: 'asc' } },
 } satisfies Prisma.CompraInclude;
+
+const TIPOS_GASTO = ['agente', 'courier', 'seguro', 'otro'] as const;
+type TipoGasto = (typeof TIPOS_GASTO)[number];
+
+function numeroOpcional(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(',', '.')) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Leer el PDF del cuerpo (base64) → páginas; o una respuesta de error ya enviada (null). */
+async function paginasDelCuerpo(archivo: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }, log: { warn: (o: unknown, m: string) => void }) {
+  if (typeof archivo !== 'string' || !archivo) {
+    reply.code(422).send({ error: 'ARCHIVO_REQUERIDO', detalle: 'archivo: PDF en base64' });
+    return null;
+  }
+  const bytes = Buffer.from(archivo, 'base64');
+  if (bytes.length === 0) {
+    reply.code(422).send({ error: 'ARCHIVO_INVALIDO' });
+    return null;
+  }
+  if (bytes.length > TOPE_PDF_BYTES) {
+    reply.code(413).send({ error: 'ARCHIVO_DEMASIADO_GRANDE', detalle: 'Máximo 8 MB' });
+    return null;
+  }
+  if (bytes.subarray(0, 5).toString('latin1') !== '%PDF-') {
+    reply.code(422).send({ error: 'ARCHIVO_INVALIDO', detalle: 'Solo PDF' });
+    return null;
+  }
+  try {
+    return await extraerPaginasPdf(new Uint8Array(bytes));
+  } catch (e) {
+    log.warn({ err: e }, 'pdf ilegible');
+    reply.code(422).send({ error: 'PDF_ILEGIBLE', detalle: 'No se pudo leer el texto del PDF (¿es una imagen escaneada?).' });
+    return null;
+  }
+}
 
 function entero(v: unknown, def = 0): number {
   return Number.isInteger(v) ? (v as number) : def;
@@ -208,18 +249,10 @@ export default async function rutasCompras(app: FastifyInstance) {
 
   app.post<{ Body: CuerpoLeer }>('/compras/leer', { ...encargado, bodyLimit: 12 * 1024 * 1024 }, async (req, reply) => {
     const b = req.body ?? {};
-    if (typeof b.archivo !== 'string' || !b.archivo) return reply.code(422).send({ error: 'ARCHIVO_REQUERIDO', detalle: 'archivo: PDF en base64' });
-    const bytes = Buffer.from(b.archivo, 'base64');
-    if (bytes.length === 0) return reply.code(422).send({ error: 'ARCHIVO_INVALIDO' });
-    if (bytes.length > TOPE_PDF_BYTES) return reply.code(413).send({ error: 'ARCHIVO_DEMASIADO_GRANDE', detalle: 'Máximo 8 MB' });
-    if (bytes.subarray(0, 5).toString('latin1') !== '%PDF-') return reply.code(422).send({ error: 'ARCHIVO_INVALIDO', detalle: 'Solo PDF' });
-
-    let paginas;
-    try {
-      paginas = await extraerPaginasPdf(new Uint8Array(bytes));
-    } catch (e) {
-      req.log.warn({ err: e }, 'pdf ilegible');
-      return reply.code(422).send({ error: 'PDF_ILEGIBLE', detalle: 'No se pudo leer el texto del PDF (¿es una imagen escaneada?).' });
+    const paginas = await paginasDelCuerpo(b.archivo, reply, req.log);
+    if (!paginas) return;
+    if (reconoceDin(paginas)) {
+      return reply.code(422).send({ error: 'ES_DIN', detalle: 'Este PDF es una Declaración de Ingreso de Aduana, no una factura: se sube desde la compra en dólares, en «Importación».' });
     }
 
     // Lector: el del proveedor indicado si lo tiene; si no, el que reconozca el documento.
@@ -326,6 +359,21 @@ export default async function rutasCompras(app: FastifyInstance) {
       yaCargada,
       sinVincular: lineas.filter((l) => !l.productoId).length,
     };
+  });
+
+  // ---------- C12b: leer una DIN (§6.7) ----------
+  app.post<{ Body: { archivo?: unknown } }>('/compras/leer-din', { ...encargado, bodyLimit: 12 * 1024 * 1024 }, async (req, reply) => {
+    const paginas = await paginasDelCuerpo(req.body?.archivo, reply, req.log);
+    if (!paginas) return;
+    if (!reconoceDin(paginas)) {
+      return reply.code(422).send({ error: 'NO_ES_DIN', detalle: 'Este PDF no parece una Declaración de Ingreso de Aduana.' });
+    }
+    const din = leerDin(paginas);
+    const calculo =
+      din.fob !== null && din.tipoCambio !== null
+        ? calcularImportacion({ fob: din.fob, flete: din.flete ?? 0, seguro: din.seguro, arancelPct: din.arancelPct, tipoCambioAduana: din.tipoCambio })
+        : null;
+    return { din, calculo };
   });
 
   // ---------- Crear borrador (§7.3) ----------
@@ -533,10 +581,10 @@ export default async function rutasCompras(app: FastifyInstance) {
     };
   });
 
-  app.get<{ Params: { id: string } }>('/compras/:id', encargado, async (req, reply) => {
-    const compra = await prisma.compra.findUnique({ where: { id: req.params.id }, include: INCLUIR_COMPRA });
-    if (!compra) return reply.code(404).send({ error: 'COMPRA_NO_ENCONTRADA' });
-    // Stock vigente en la ubicación de la compra, para mostrar «pasará de X a Y» al recibir.
+  /** Detalle completo: líneas con stock vigente («pasará de X a Y») y, en moneda extranjera, el resumen de importación (§6.7). */
+  async function detalleCompra(id: string) {
+    const compra = await prisma.compra.findUnique({ where: { id }, include: INCLUIR_COMPRA });
+    if (!compra) return null;
     const productoIds = compra.lineas.map((l) => l.productoId).filter((x): x is string => !!x);
     const stock = productoIds.length
       ? await prisma.stockActual.findMany({ where: { ubicacionId: compra.ubicacionId, productoId: { in: productoIds } }, select: { productoId: true, cantidad: true } })
@@ -545,7 +593,165 @@ export default async function rutasCompras(app: FastifyInstance) {
     return {
       ...compra,
       lineas: compra.lineas.map((l) => ({ ...l, stockVigente: l.productoId ? (vigente.get(l.productoId) ?? 0) : null })),
+      resumenImportacion: compra.moneda === 'CLP' ? null : resumenImportacion(compra.lineas, compra, compra.gastos),
     };
+  }
+
+  app.get<{ Params: { id: string } }>('/compras/:id', encargado, async (req, reply) => {
+    const compra = await detalleCompra(req.params.id);
+    if (!compra) return reply.code(404).send({ error: 'COMPRA_NO_ENCONTRADA' });
+    return compra;
+  });
+
+  // ---------- C12b: importación y gastos (§6.7) ----------
+  /**
+   * Vuelve a repartir entre las líneas el costo de importación (gastos sin documento + arancel + gastos
+   * netos) y el IVA recuperable (IVA de importación + IVA de los gastos), y recalcula los totales.
+   * En una compra recibida el costo de referencia de los productos que ya entraron se actualiza
+   * (la DIN y las facturas del agente llegan después de la mercadería).
+   */
+  async function recalcularImportacion(tx: Prisma.TransactionClient, compraId: string) {
+    const compra = await tx.compra.findUnique({ where: { id: compraId }, include: { lineas: { orderBy: { orden: 'asc' } }, gastos: true } });
+    if (!compra || compra.moneda === 'CLP' || !compra.tipoCambio) return;
+    const costoExtra = compra.gastosExtra + (compra.arancel ?? 0) + compra.gastos.reduce((a, g) => a + g.montoNeto, 0);
+    const ivaExtra = (compra.ivaImportacion ?? 0) + compra.gastos.reduce((a, g) => a + g.iva, 0);
+    const repartidas = convertirLineasAClp(compra.lineas, compra.tipoCambio, costoExtra, ivaExtra);
+    const suma = { neto: 0, impuestos: 0, total: 0 };
+    for (let i = 0; i < compra.lineas.length; i++) {
+      const l = compra.lineas[i]!;
+      const r = repartidas[i]!;
+      const costoUnitario = l.cantidad > 0 ? Math.round(r.total / l.cantidad) : 0;
+      await tx.compraLinea.update({ where: { id: l.id }, data: { neto: r.neto, impuestos: r.impuestos, total: r.total, costoUnitario } });
+      if (l.movimientoId && l.productoId) await tx.producto.update({ where: { id: l.productoId }, data: { costoReferencia: costoUnitario } });
+      suma.neto += r.neto;
+      suma.impuestos += r.impuestos;
+      suma.total += r.total;
+    }
+    await tx.compra.update({ where: { id: compraId }, data: suma });
+  }
+
+  async function compraImportable(id: string, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) {
+    const compra = await prisma.compra.findUnique({ where: { id }, include: { gastos: true } });
+    if (!compra) {
+      reply.code(404).send({ error: 'COMPRA_NO_ENCONTRADA' });
+      return null;
+    }
+    if (compra.estado === 'anulada') {
+      reply.code(409).send({ error: 'COMPRA_NO_EDITABLE', detalle: 'La compra está anulada.' });
+      return null;
+    }
+    if (compra.moneda === 'CLP' || !compra.tipoCambio) {
+      reply.code(422).send({ error: 'COMPRA_EN_CLP', detalle: 'Los costos de importación solo aplican a compras en moneda extranjera con tipo de cambio.' });
+      return null;
+    }
+    return compra;
+  }
+
+  interface CuerpoImportacion {
+    quitar?: unknown;
+    fob?: unknown;
+    flete?: unknown;
+    seguro?: unknown; // null → presunto 2 %
+    arancelPct?: unknown; // default 6
+    tipoCambioAduana?: unknown; // default: el de la compra
+    arancel?: unknown; // CLP; default: calculado
+    ivaImportacion?: unknown; // CLP; default: calculado
+    dinNumero?: unknown;
+    dinFecha?: unknown;
+  }
+
+  app.put<{ Params: { id: string }; Body: CuerpoImportacion }>('/compras/:id/importacion', encargado, async (req, reply) => {
+    const compra = await compraImportable(req.params.id, reply);
+    if (!compra) return;
+    const b = req.body ?? {};
+    const anterior = { fob: compra.fob, flete: compra.flete, seguro: compra.seguro, cif: compra.cif, arancelPct: compra.arancelPct, tipoCambioAduana: compra.tipoCambioAduana, arancel: compra.arancel, ivaImportacion: compra.ivaImportacion, dinNumero: compra.dinNumero, dinFecha: compra.dinFecha };
+    let data: { fob: number | null; flete: number | null; seguro: number | null; cif: number | null; arancelPct: number | null; tipoCambioAduana: number | null; arancel: number | null; ivaImportacion: number | null; dinNumero: string | null; dinFecha: Date | null };
+    if (b.quitar === true) {
+      data = { fob: null, flete: null, seguro: null, cif: null, arancelPct: null, tipoCambioAduana: null, arancel: null, ivaImportacion: null, dinNumero: null, dinFecha: null };
+    } else {
+      const fob = numeroOpcional(b.fob);
+      if (fob === null) return reply.code(422).send({ error: 'CUERPO_INVALIDO', detalle: 'fob: número ≥ 0 en la moneda del documento' });
+      const flete = numeroOpcional(b.flete) ?? 0;
+      const seguroDado = numeroOpcional(b.seguro);
+      const arancelPct = numeroOpcional(b.arancelPct) ?? 6;
+      const tipoCambioAduana = numeroOpcional(b.tipoCambioAduana) || compra.tipoCambio!;
+      const calc = calcularImportacion({ fob, flete, seguro: seguroDado, arancelPct, tipoCambioAduana });
+      const arancel = Number.isInteger(b.arancel) && (b.arancel as number) >= 0 ? (b.arancel as number) : calc.arancel;
+      const ivaImportacion = Number.isInteger(b.ivaImportacion) && (b.ivaImportacion as number) >= 0 ? (b.ivaImportacion as number) : calc.ivaImportacion;
+      let dinFecha: Date | null = null;
+      if (typeof b.dinFecha === 'string' && b.dinFecha.trim()) {
+        dinFecha = new Date(`${b.dinFecha.slice(0, 10)}T12:00:00.000Z`);
+        if (Number.isNaN(dinFecha.getTime())) return reply.code(422).send({ error: 'FECHA_INVALIDA', detalle: 'dinFecha' });
+      }
+      data = {
+        fob,
+        flete,
+        seguro: calc.seguro,
+        cif: calc.cif,
+        arancelPct,
+        tipoCambioAduana,
+        arancel,
+        ivaImportacion,
+        dinNumero: typeof b.dinNumero === 'string' && b.dinNumero.trim() ? b.dinNumero.trim().slice(0, 40) : null,
+        dinFecha,
+      };
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.compra.update({ where: { id: compra.id }, data });
+      await recalcularImportacion(tx, compra.id);
+      await tx.auditoria.create({
+        data: { usuarioId: req.user.sub, entidad: 'compra', entidadId: compra.id, accion: 'editar', valorAnterior: { importacion: anterior }, valorNuevo: { importacion: b.quitar === true ? null : { ...data, dinFecha: data.dinFecha?.toISOString() ?? null } } },
+      });
+    });
+    return detalleCompra(compra.id);
+  });
+
+  interface CuerpoGasto {
+    tipo?: unknown;
+    descripcion?: unknown;
+    montoNeto?: unknown;
+    iva?: unknown;
+    documento?: unknown;
+    fecha?: unknown;
+  }
+
+  app.post<{ Params: { id: string }; Body: CuerpoGasto }>('/compras/:id/gastos', encargado, async (req, reply) => {
+    const compra = await compraImportable(req.params.id, reply);
+    if (!compra) return;
+    const b = req.body ?? {};
+    if (!TIPOS_GASTO.includes(b.tipo as TipoGasto)) return reply.code(422).send({ error: 'CUERPO_INVALIDO', detalle: `tipo: ${TIPOS_GASTO.join(' | ')}` });
+    const descripcion = typeof b.descripcion === 'string' ? b.descripcion.trim().slice(0, 191) : '';
+    if (!descripcion) return reply.code(422).send({ error: 'CUERPO_INVALIDO', detalle: 'descripcion: obligatoria' });
+    const montoNeto = entero(b.montoNeto, -1);
+    if (montoNeto < 0) return reply.code(422).send({ error: 'CUERPO_INVALIDO', detalle: 'montoNeto: entero ≥ 0 en CLP' });
+    const iva = Math.max(0, entero(b.iva));
+    let fecha: Date | null = null;
+    if (typeof b.fecha === 'string' && b.fecha.trim()) {
+      fecha = new Date(`${b.fecha.slice(0, 10)}T12:00:00.000Z`);
+      if (Number.isNaN(fecha.getTime())) return reply.code(422).send({ error: 'FECHA_INVALIDA' });
+    }
+    const gasto = await prisma.$transaction(async (tx) => {
+      const g = await tx.compraGasto.create({
+        data: { compraId: compra.id, tipo: b.tipo as TipoGasto, descripcion, montoNeto, iva, documento: typeof b.documento === 'string' && b.documento.trim() ? b.documento.trim().slice(0, 100) : null, fecha },
+      });
+      await recalcularImportacion(tx, compra.id);
+      await tx.auditoria.create({ data: { usuarioId: req.user.sub, entidad: 'compra', entidadId: compra.id, accion: 'editar', valorNuevo: { gasto: { id: g.id, tipo: g.tipo, descripcion, montoNeto, iva, documento: g.documento } } } });
+      return g;
+    });
+    return reply.code(201).send({ gasto, compra: await detalleCompra(compra.id) });
+  });
+
+  app.delete<{ Params: { id: string; gastoId: string } }>('/compras/:id/gastos/:gastoId', encargado, async (req, reply) => {
+    const compra = await compraImportable(req.params.id, reply);
+    if (!compra) return;
+    const gasto = compra.gastos.find((g) => g.id === req.params.gastoId);
+    if (!gasto) return reply.code(404).send({ error: 'GASTO_NO_ENCONTRADO' });
+    await prisma.$transaction(async (tx) => {
+      await tx.compraGasto.delete({ where: { id: gasto.id } });
+      await recalcularImportacion(tx, compra.id);
+      await tx.auditoria.create({ data: { usuarioId: req.user.sub, entidad: 'compra', entidadId: compra.id, accion: 'editar', valorAnterior: { gasto: { id: gasto.id, tipo: gasto.tipo, descripcion: gasto.descripcion, montoNeto: gasto.montoNeto, iva: gasto.iva } }, valorNuevo: { gasto: null } } });
+    });
+    return detalleCompra(compra.id);
   });
 
   async function compraEditable(id: string, reply: { code: (n: number) => { send: (b: unknown) => unknown } }, permitirRecibida = false) {

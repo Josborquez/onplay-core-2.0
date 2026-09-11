@@ -4,7 +4,7 @@
 //     con advertencias agrupadas y barra fija al pie con el resumen y la acción principal.
 // V27 detalle con migas, tarjetas de cifras, columna «X → Y» de stock, pie fijo y diálogo «Recibir».
 // Diálogo «Vincular a un producto» en dos pasos: Buscar / Crear → Unidades y precio (con margen).
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ErrorApi, api } from '../../api.js';
 import { Banner, Boton, Campo, CampoMonto, Cargando, Dialogo, Insignia, PieDialogo, Segmentado, Vacio } from '../../components/base.js';
@@ -21,7 +21,12 @@ import type { TipoProducto } from '../../tipos.js';
 import { TIPO_POR_RAIZ } from './AltaSnack.js';
 import {
   ETIQUETA_TIPO_DOC,
+  ETIQUETA_TIPO_GASTO,
+  type CalculoImportacion,
   type CompraDetalle as CompraDetalleDatos,
+  type CompraGasto,
+  type DinLeida,
+  type TipoGastoImportacion,
   type CompraResumen,
   type EstadoCompra,
   type LectorFactura,
@@ -1243,11 +1248,11 @@ export function CompraNueva() {
             ) : (
               <>
                 <p className="text-cuerpo text-lab">
-                  Documento en <strong className="font-semibold">{moneda}</strong>, total {lectura?.totalOriginal != null ? usd(lectura.totalOriginal) : '—'}. Indica a cuántos pesos se pagó cada dólar y, si los hay, los gastos de importación en pesos (flete, aduana, IVA de importación): se reparten entre las líneas según su monto y forman parte del costo.
+                  Documento en <strong className="font-semibold">{moneda}</strong>, total {lectura?.totalOriginal != null ? usd(lectura.totalOriginal) : '—'}. Indica a cuántos pesos se pagó cada dólar. El arancel, el agente de aduanas y el courier se agregan después, en el detalle de la compra («Importación»), con la DIN y sus facturas; aquí solo van gastos sin documento, si los hay.
                 </p>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                   <Campo etiqueta={`Tipo de cambio (CLP por 1 ${moneda})`} value={tipoCambio} onChange={(e) => setTipoCambio(e.target.value)} inputMode="decimal" placeholder="950" autoFocus />
-                  <CampoMonto etiqueta="Gastos de importación (CLP, opcional)" valor={gastosExtra} onValor={setGastosExtra} />
+                  <CampoMonto etiqueta="Gastos sin documento (CLP, opcional)" valor={gastosExtra} onValor={setGastosExtra} />
                   <div className="self-end">
                     <Boton ajustado variante={requiereTipoCambio ? 'principal' : 'secundario'} cargando={releyendo} deshabilitado={!(Number(tipoCambio.replace(',', '.')) > 0)} onClick={() => void releerConMoneda()}>
                       Calcular costos en pesos
@@ -1408,6 +1413,460 @@ export function CompraNueva() {
           setProveedor(p);
           avisar({ tono: 'ok', titulo: 'Proveedor creado.', detalle: p.nombre });
           void cargarProveedores().catch(() => {});
+        }}
+      />
+    </div>
+  );
+}
+
+/* =========================================================================================
+ * C12b — Importación (11-SDD §6.7, docs/13): DIN, gastos del agente y del courier, IVA aparte
+ * ========================================================================================= */
+
+/** Misma fórmula que `calcularImportacion` del dominio (docs/13 §1), para la vista previa del diálogo. */
+function calcImportacion(fob: number, flete: number, seguro: number | null, arancelPct: number, tc: number): CalculoImportacion {
+  const c = (n: number) => Math.round(n * 100) / 100;
+  const seguroPresunto = seguro === null;
+  const seg = seguroPresunto ? c(fob * 0.02) : seguro;
+  const cif = c(fob + flete + seg);
+  const arancelOriginal = c((cif * arancelPct) / 100);
+  const ivaOriginal = c((cif + arancelOriginal) * 0.19);
+  return {
+    seguro: seg,
+    seguroPresunto,
+    cif,
+    arancelPct,
+    arancelOriginal,
+    ivaOriginal,
+    totalGiroOriginal: c(arancelOriginal + ivaOriginal),
+    arancel: Math.round(arancelOriginal * tc),
+    ivaImportacion: Math.round(ivaOriginal * tc),
+    totalGiro: Math.round(c(arancelOriginal + ivaOriginal) * tc),
+  };
+}
+
+const numDe2 = (s: string) => {
+  const n = Number(s.replace(',', '.'));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+const texto = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n));
+
+interface FormImportacion {
+  fob: string;
+  flete: string;
+  seguro: string; // vacío = presunto 2 %
+  arancelPct: string;
+  tipoCambioAduana: string;
+  arancel: number | ''; // CLP girado
+  ivaImportacion: number | '';
+  dinNumero: string;
+  dinFecha: string;
+}
+
+function formDesdeCompra(c: CompraDetalleDatos): FormImportacion {
+  return {
+    fob: texto(c.fob),
+    flete: texto(c.flete ?? 0),
+    seguro: '',
+    arancelPct: texto(c.arancelPct ?? 6),
+    tipoCambioAduana: texto(c.tipoCambioAduana ?? c.tipoCambio),
+    arancel: c.arancel ?? '',
+    ivaImportacion: c.ivaImportacion ?? '',
+    dinNumero: c.dinNumero ?? '',
+    dinFecha: c.dinFecha ? c.dinFecha.slice(0, 10) : '',
+  };
+}
+
+function formDesdeDin(d: DinLeida, c: CompraDetalleDatos): FormImportacion {
+  return {
+    fob: texto(d.fob),
+    flete: texto(d.flete ?? 0),
+    seguro: '',
+    arancelPct: texto(d.arancelPct ?? 6),
+    tipoCambioAduana: texto(d.tipoCambio ?? c.tipoCambio),
+    arancel: '',
+    ivaImportacion: '',
+    dinNumero: d.numero ?? '',
+    dinFecha: d.fechaAceptacion ?? '',
+  };
+}
+
+function DialogoImportacion({ abierto, compra, inicial, lecturaDin, onCerrar, onGuardado }: { abierto: boolean; compra: CompraDetalleDatos; inicial: FormImportacion | null; lecturaDin: DinLeida | null; onCerrar: () => void; onGuardado: (c: CompraDetalleDatos) => void }) {
+  const [f, setF] = useState<FormImportacion>(() => inicial ?? formDesdeCompra(compra));
+  const [manual, setManual] = useState(false); // la persona corrigió los CLP girados: no se pisan
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (abierto) {
+      setF(inicial ?? formDesdeCompra(compra));
+      setManual(inicial ? inicial.arancel !== '' : compra.arancel !== null);
+      setError('');
+    }
+  }, [abierto, inicial, compra]);
+
+  const fob = numDe2(f.fob);
+  const flete = numDe2(f.flete) ?? 0;
+  const seguro = f.seguro.trim() === '' ? null : numDe2(f.seguro);
+  const pct = numDe2(f.arancelPct) ?? 6;
+  const tc = numDe2(f.tipoCambioAduana) ?? compra.tipoCambio ?? 0;
+  const calc = fob !== null && tc > 0 ? calcImportacion(fob, flete, seguro, pct, tc) : null;
+
+  useEffect(() => {
+    if (!manual && calc) setF((prev) => (prev.arancel === calc.arancel && prev.ivaImportacion === calc.ivaImportacion ? prev : { ...prev, arancel: calc.arancel, ivaImportacion: calc.ivaImportacion }));
+  }, [manual, calc?.arancel, calc?.ivaImportacion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const codigosCompra = new Set(compra.lineas.map((l) => l.codigoProveedor).filter((x): x is string => !!x));
+  const itemsCoinciden = lecturaDin ? lecturaDin.items.filter((i) => codigosCompra.has(i.codigo)).length : 0;
+
+  const guardar = async () => {
+    if (fob === null) {
+      setError('Falta el valor FOB (la mercancía, en la moneda del documento).');
+      return;
+    }
+    setEnviando(true);
+    setError('');
+    try {
+      const c = await api<CompraDetalleDatos>(`/compras/${compra.id}/importacion`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          fob,
+          flete,
+          seguro,
+          arancelPct: pct,
+          tipoCambioAduana: tc || null,
+          arancel: f.arancel === '' ? null : f.arancel,
+          ivaImportacion: f.ivaImportacion === '' ? null : f.ivaImportacion,
+          dinNumero: f.dinNumero.trim() || null,
+          dinFecha: f.dinFecha || null,
+        }),
+      });
+      onGuardado(c);
+    } catch (e) {
+      setError(mensajeError(e, { COMPRA_EN_CLP: 'La compra no está en moneda extranjera.', COMPRA_NO_EDITABLE: 'La compra está anulada.' }));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const m = compra.moneda;
+  return (
+    <Dialogo abierto={abierto} titulo="Importación" sobreTitulo={`${compra.proveedor.nombre} · ${compra.numeroDocumento}`} subtitulo="Lo que dice la Declaración de Ingreso (DIN). El IVA se calcula pero no entra al costo: es crédito fiscal." onCerrar={onCerrar} cerrable={!enviando} ancho={640}>
+      <div className="flex flex-col gap-4">
+        {lecturaDin ? (
+          <Banner tono={lecturaDin.advertencias.length ? 'alerta' : 'ok'}>
+            DIN {lecturaDin.numero ?? 'sin número'} leída{lecturaDin.despachador ? ` · despachador ${lecturaDin.despachador}` : ''} · {lecturaDin.items.length} ítem{lecturaDin.items.length === 1 ? '' : 's'}
+            {lecturaDin.items.length ? `, ${itemsCoinciden} con código de esta compra` : ''}.{lecturaDin.advertencias.length ? ` ${lecturaDin.advertencias.join(' ')}` : ''}
+          </Banner>
+        ) : null}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Campo etiqueta={`FOB (${m})`} value={f.fob} onChange={(e) => { setF({ ...f, fob: e.target.value }); setManual(false); }} inputMode="decimal" placeholder="4735.16" autoFocus ayuda="La mercancía sin envío" />
+          <Campo etiqueta={`Flete (${m})`} value={f.flete} onChange={(e) => { setF({ ...f, flete: e.target.value }); setManual(false); }} inputMode="decimal" placeholder="318.80" ayuda="El envío que cobró el proveedor o el courier" />
+          <Campo etiqueta={`Seguro (${m})`} value={f.seguro} onChange={(e) => { setF({ ...f, seguro: e.target.value }); setManual(false); }} inputMode="decimal" placeholder={calc ? `presunto ${calc.seguro.toFixed(2)}` : 'vacío = 2 % presunto'} ayuda="Vacío: Aduana presume 2 % del FOB (no se paga)" />
+          <Campo etiqueta="Arancel (%)" value={f.arancelPct} onChange={(e) => { setF({ ...f, arancelPct: e.target.value }); setManual(false); }} inputMode="decimal" placeholder="6" ayuda="0 con certificado de origen" />
+          <Campo etiqueta={`Dólar aduanero (CLP por 1 ${m})`} value={f.tipoCambioAduana} onChange={(e) => { setF({ ...f, tipoCambioAduana: e.target.value }); setManual(false); }} inputMode="decimal" placeholder={texto(compra.tipoCambio)} ayuda="El de la DIN; si no hay, el de la compra" />
+          <Campo etiqueta="N° de DIN" value={f.dinNumero} onChange={(e) => setF({ ...f, dinNumero: e.target.value })} placeholder="1150127395-5" />
+          <Campo etiqueta="Fecha de aceptación" type="date" value={f.dinFecha} onChange={(e) => setF({ ...f, dinFecha: e.target.value })} />
+        </div>
+        {calc ? (
+          <div className="grid grid-cols-2 gap-3 rounded-tarjeta bg-bg2 p-4 text-chico text-lab2 sm:grid-cols-4">
+            <div>
+              <div className="text-rot font-semibold uppercase tracking-[.06em] text-lab3">CIF</div>
+              <div className="num text-cuerpo text-lab">{usd(calc.cif)}</div>
+              <div>{calc.seguroPresunto ? `seguro presunto ${usd(calc.seguro)}` : `seguro ${usd(calc.seguro)}`}</div>
+            </div>
+            <div>
+              <div className="text-rot font-semibold uppercase tracking-[.06em] text-lab3">Ad valorem {calc.arancelPct} %</div>
+              <div className="num text-cuerpo text-lab">{usd(calc.arancelOriginal)}</div>
+              <div>≈ {clp(calc.arancel)} · costo</div>
+            </div>
+            <div>
+              <div className="text-rot font-semibold uppercase tracking-[.06em] text-lab3">IVA 19 %</div>
+              <div className="num text-cuerpo text-lab">{usd(calc.ivaOriginal)}</div>
+              <div>≈ {clp(calc.ivaImportacion)} · crédito fiscal</div>
+            </div>
+            <div>
+              <div className="text-rot font-semibold uppercase tracking-[.06em] text-lab3">Total giro</div>
+              <div className="num text-cuerpo text-lab">{usd(calc.totalGiroOriginal)}</div>
+              <div>≈ {clp(calc.totalGiro)} a Tesorería</div>
+            </div>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <CampoMonto etiqueta="Ad valorem girado (CLP)" valor={f.arancel} onValor={(v) => { setF({ ...f, arancel: v }); setManual(true); }} ayuda="Lo que dice la DIN en pesos; se calcula solo si lo dejas" />
+          <CampoMonto etiqueta="IVA girado (CLP)" valor={f.ivaImportacion} onValor={(v) => { setF({ ...f, ivaImportacion: v }); setManual(true); }} ayuda="Crédito fiscal: se guarda aparte, no entra al costo" />
+        </div>
+        <PieDialogo error={error || undefined}>
+          <Boton ajustado onClick={onCerrar} deshabilitado={enviando}>
+            Cancelar
+          </Boton>
+          <Boton ajustado variante="principal" cargando={enviando} deshabilitado={fob === null} onClick={() => void guardar()}>
+            Guardar importación
+          </Boton>
+        </PieDialogo>
+      </div>
+    </Dialogo>
+  );
+}
+
+function DialogoGasto({ abierto, compraId, onCerrar, onGuardado }: { abierto: boolean; compraId: string; onCerrar: () => void; onGuardado: (c: CompraDetalleDatos, g: CompraGasto) => void }) {
+  const [tipo, setTipo] = useState<TipoGastoImportacion>('agente');
+  const [descripcion, setDescripcion] = useState('');
+  const [montoNeto, setMontoNeto] = useState<number | ''>('');
+  const [iva, setIva] = useState<number | ''>('');
+  const [documento, setDocumento] = useState('');
+  const [fechaGasto, setFechaGasto] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (abierto) {
+      setTipo('agente');
+      setDescripcion('');
+      setMontoNeto('');
+      setIva('');
+      setDocumento('');
+      setFechaGasto('');
+      setError('');
+    }
+  }, [abierto]);
+
+  const SUGERENCIA: Record<TipoGastoImportacion, string> = { agente: 'Honorarios y gastos de despacho', courier: 'Cargo terminal', seguro: 'Póliza de transporte', otro: '' };
+
+  const guardar = async () => {
+    if (!descripcion.trim() || montoNeto === '') {
+      setError('Falta la descripción o el monto neto.');
+      return;
+    }
+    setEnviando(true);
+    setError('');
+    try {
+      const r = await api<{ gasto: CompraGasto; compra: CompraDetalleDatos }>(`/compras/${compraId}/gastos`, {
+        method: 'POST',
+        body: JSON.stringify({ tipo, descripcion: descripcion.trim(), montoNeto, iva: iva === '' ? 0 : iva, documento: documento.trim() || null, fecha: fechaGasto || null }),
+      });
+      onGuardado(r.compra, r.gasto);
+    } catch (e) {
+      setError(mensajeError(e));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Dialogo abierto={abierto} titulo="Agregar gasto de importación" subtitulo="El neto entra al costo de las líneas; el IVA queda aparte como crédito fiscal." onCerrar={onCerrar} cerrable={!enviando} ancho={560}>
+      <div className="flex flex-col gap-3">
+        <Selecto
+          etiqueta="Quién lo cobra"
+          valor={tipo}
+          onValor={(v) => {
+            const t = v as TipoGastoImportacion;
+            setTipo(t);
+            if (!descripcion.trim() || Object.values(SUGERENCIA).includes(descripcion)) setDescripcion(SUGERENCIA[t]);
+          }}
+          opciones={(Object.keys(ETIQUETA_TIPO_GASTO) as TipoGastoImportacion[]).map((k) => ({ valor: k, etiqueta: ETIQUETA_TIPO_GASTO[k] }))}
+        />
+        <Campo etiqueta="Descripción" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder={SUGERENCIA[tipo] || 'Qué se pagó'} autoFocus />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <CampoMonto etiqueta="Monto neto (CLP)" valor={montoNeto} onValor={setMontoNeto} ayuda="Sin IVA. Es costo" />
+          <CampoMonto etiqueta="IVA (CLP)" valor={iva} onValor={setIva} ayuda={montoNeto !== '' && iva === '' ? `19 % serían ${clp(Math.round(montoNeto * 0.19))}` : 'Crédito fiscal, no es costo'} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Campo etiqueta="Documento (opcional)" value={documento} onChange={(e) => setDocumento(e.target.value)} placeholder="Factura 37433" />
+          <Campo etiqueta="Fecha (opcional)" type="date" value={fechaGasto} onChange={(e) => setFechaGasto(e.target.value)} />
+        </div>
+        <PieDialogo error={error || undefined}>
+          <Boton ajustado onClick={onCerrar} deshabilitado={enviando}>
+            Cancelar
+          </Boton>
+          <Boton ajustado variante="principal" cargando={enviando} deshabilitado={!descripcion.trim() || montoNeto === ''} onClick={() => void guardar()}>
+            Agregar gasto
+          </Boton>
+        </PieDialogo>
+      </div>
+    </Dialogo>
+  );
+}
+
+function SeccionImportacion({ compra, onCambio }: { compra: CompraDetalleDatos; onCambio: (c: CompraDetalleDatos) => void }) {
+  const { avisar } = useAvisos();
+  const confirmar = useConfirmar();
+  const inputDin = useRef<HTMLInputElement>(null);
+  const [dialogo, setDialogo] = useState<{ abierto: boolean; inicial: FormImportacion | null; din: DinLeida | null }>({ abierto: false, inicial: null, din: null });
+  const [gastoAbierto, setGastoAbierto] = useState(false);
+  const [leyendoDin, setLeyendoDin] = useState(false);
+  const r = compra.resumenImportacion;
+  const editable = compra.estado !== 'anulada';
+  const conDin = compra.fob !== null;
+  const m = compra.moneda;
+
+  const alElegirDin = async (archivo: File | undefined) => {
+    if (!archivo) return;
+    setLeyendoDin(true);
+    try {
+      const base64 = await leerComoBase64(archivo);
+      const lectura = await api<{ din: DinLeida; calculo: CalculoImportacion | null }>('/compras/leer-din', { method: 'POST', body: JSON.stringify({ archivo: base64 }) });
+      setDialogo({ abierto: true, inicial: formDesdeDin(lectura.din, compra), din: lectura.din });
+    } catch (e) {
+      avisar({ tono: 'error', titulo: 'No se pudo leer la DIN.', detalle: mensajeError(e, { NO_ES_DIN: 'Ese PDF no es una Declaración de Ingreso.', PDF_ILEGIBLE: 'El PDF no tiene texto (¿escaneado?). Digita los valores a mano.' }) });
+    } finally {
+      setLeyendoDin(false);
+      if (inputDin.current) inputDin.current.value = '';
+    }
+  };
+
+  const quitarDin = async () => {
+    const seguro = await confirmar({ titulo: '¿Quitar los datos de la DIN?', cuerpo: 'Las líneas vuelven a costar mercancía × tipo de cambio más los gastos. Puedes volver a cargarla.', accion: 'Quitar DIN' });
+    if (!seguro) return;
+    try {
+      const c = await api<CompraDetalleDatos>(`/compras/${compra.id}/importacion`, { method: 'PUT', body: JSON.stringify({ quitar: true }) });
+      onCambio(c);
+      avisar({ tono: 'ok', titulo: 'DIN quitada.', detalle: 'Los costos se recalcularon.' });
+    } catch (e) {
+      avisar({ tono: 'error', titulo: 'No se pudo quitar.', detalle: mensajeError(e) });
+    }
+  };
+
+  const quitarGasto = async (g: CompraGasto) => {
+    const seguro = await confirmar({ titulo: `¿Quitar «${g.descripcion}»?`, cuerpo: `${clp(g.montoNeto)} netos salen del costo de las líneas.`, accion: 'Quitar gasto' });
+    if (!seguro) return;
+    try {
+      const c = await api<CompraDetalleDatos>(`/compras/${compra.id}/gastos/${g.id}`, { method: 'DELETE' });
+      onCambio(c);
+      avisar({ tono: 'ok', titulo: 'Gasto quitado.', detalle: g.descripcion });
+    } catch (e) {
+      avisar({ tono: 'error', titulo: 'No se pudo quitar el gasto.', detalle: mensajeError(e) });
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-tarjeta bg-bg p-4 shadow-tarjeta">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="font-semibold text-lab">Importación</h2>
+          <p className="text-chico text-lab3">Costo puesto en la tienda = mercancía y flete × tipo de cambio + arancel + gastos netos. El IVA de importación y el de los servicios vuelven en el F29.</p>
+        </div>
+        {editable ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <input ref={inputDin} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => void alElegirDin(e.target.files?.[0])} disabled={leyendoDin} />
+            <Boton ajustado cargando={leyendoDin} onClick={() => inputDin.current?.click()}>
+              {conDin ? 'Releer DIN (PDF)' : 'Subir DIN (PDF)'}
+            </Boton>
+            <Boton ajustado onClick={() => setDialogo({ abierto: true, inicial: null, din: null })}>
+              {conDin ? 'Editar' : 'Digitar'}
+            </Boton>
+            <Boton ajustado variante="principal" onClick={() => setGastoAbierto(true)}>
+              Agregar gasto
+            </Boton>
+          </div>
+        ) : null}
+      </div>
+
+      {r ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <TarjetaCifra rotulo="Costo puesto en la tienda" valor={clp(r.costoPuesto)} detalle={r.fobClp !== null ? `mercancía ${clp(r.fobClp)} al tipo de cambio de la compra` : 'mercancía × tipo de cambio + gastos'} grande />
+          <TarjetaCifra rotulo="IVA a recuperar" valor={clp(r.ivaRecuperable)} detalle={compra.ivaImportacion !== null ? `importación ${clp(compra.ivaImportacion)} · servicios ${clp(r.ivaGastos)}` : r.ivaGastos ? `servicios ${clp(r.ivaGastos)}` : 'sin DIN todavía'} grande />
+          <TarjetaCifra rotulo="Desembolso" valor={clp(r.desembolso)} detalle="costo + IVA recuperable" grande />
+          <TarjetaCifra rotulo="Sobre el FOB" valor={r.sobreFobPct !== null ? `+${r.sobreFobPct.toLocaleString('es-CL')} %` : '—'} detalle={r.sobreFobPct !== null ? 'cuánto encarece la importación' : 'se calcula con el FOB de la DIN'} grande />
+        </div>
+      ) : null}
+
+      {r?.cuadre?.difiere ? (
+        <Banner tono="alerta">
+          Las líneas suman {usd(r.cuadre.lineas)} y la DIN dice FOB + flete {usd(r.cuadre.din)}. Revisa que la DIN sea de esta compra o que no falten líneas.
+        </Banner>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="rounded-tarjeta bg-bg2 p-4">
+          <div className="text-rot font-semibold uppercase tracking-[.06em] text-lab3">Declaración de ingreso (DIN)</div>
+          {conDin ? (
+            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-chico text-lab2">
+              <dt>N° · fecha</dt>
+              <dd className="num text-lab">{compra.dinNumero ?? '—'}{compra.dinFecha ? ` · ${fecha(compra.dinFecha)}` : ''}</dd>
+              <dt>FOB + flete + seguro</dt>
+              <dd className="num text-lab">{usd(compra.fob ?? 0)} + {usd(compra.flete ?? 0)} + {usd(compra.seguro ?? 0)}</dd>
+              <dt>CIF</dt>
+              <dd className="num text-lab">{usd(compra.cif ?? 0)}</dd>
+              <dt>Ad valorem {compra.arancelPct ?? 6} %</dt>
+              <dd className="num text-lab">{clp(compra.arancel ?? 0)} · costo</dd>
+              <dt>IVA de importación</dt>
+              <dd className="num text-lab">{clp(compra.ivaImportacion ?? 0)} · crédito fiscal</dd>
+              <dt>Dólar aduanero</dt>
+              <dd className="num text-lab">{compra.tipoCambioAduana?.toLocaleString('es-CL') ?? '—'}</dd>
+            </dl>
+          ) : (
+            <p className="mt-2 text-chico text-lab2">
+              Sin DIN todavía: las líneas cuestan mercancía × {compra.tipoCambio?.toLocaleString('es-CL')} {m}{compra.gastosExtra ? ` + ${clp(compra.gastosExtra)} de gastos sin documento` : ''}. Sube el PDF de la DIN (la que manda el agente) o digita FOB, flete y arancel.
+            </p>
+          )}
+          {conDin && editable ? (
+            <div className="mt-2">
+              <Boton ajustado variante="fantasma" onClick={() => void quitarDin()}>
+                Quitar DIN
+              </Boton>
+            </div>
+          ) : null}
+        </div>
+        <div className="rounded-tarjeta bg-bg2 p-4">
+          <div className="text-rot font-semibold uppercase tracking-[.06em] text-lab3">Gastos de agente y courier</div>
+          {compra.gastos.length ? (
+            <ul className="mt-2 flex flex-col divide-y divide-sep text-chico">
+              {compra.gastos.map((g) => (
+                <li key={g.id} className="flex items-center justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-cuerpo text-lab">{g.descripcion}</div>
+                    <div className="text-lab3">
+                      {ETIQUETA_TIPO_GASTO[g.tipo]}
+                      {g.documento ? ` · ${g.documento}` : ''}
+                      {g.fecha ? ` · ${fecha(g.fecha)}` : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <div className="num text-cuerpo text-lab">{clp(g.montoNeto)}</div>
+                      <div className="text-lab3">IVA {clp(g.iva)}</div>
+                    </div>
+                    {editable ? (
+                      <Boton soloIcono variante="fantasma" icono="cerrar" onClick={() => void quitarGasto(g)}>
+                        Quitar gasto
+                      </Boton>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-chico text-lab2">Todavía no hay gastos. Agrega la factura del agente (honorarios + gastos de despacho) y la de UPS (cargo terminal o manejo) con su neto y su IVA.</p>
+          )}
+          {compra.gastos.length ? (
+            <div className="mt-2 text-chico text-lab3">
+              Netos {clp(compra.gastos.reduce((a, g) => a + g.montoNeto, 0))} · IVA {clp(compra.gastos.reduce((a, g) => a + g.iva, 0))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <DialogoImportacion
+        abierto={dialogo.abierto}
+        compra={compra}
+        inicial={dialogo.inicial}
+        lecturaDin={dialogo.din}
+        onCerrar={() => setDialogo({ abierto: false, inicial: null, din: null })}
+        onGuardado={(c) => {
+          setDialogo({ abierto: false, inicial: null, din: null });
+          onCambio(c);
+          avisar({ tono: 'ok', titulo: 'Importación guardada.', detalle: `Costo puesto en la tienda ${clp(c.resumenImportacion?.costoPuesto ?? c.neto)} · IVA a recuperar ${clp(c.resumenImportacion?.ivaRecuperable ?? c.impuestos)}.${c.estado === 'recibida' ? ' Se actualizó el costo de referencia de los productos recibidos.' : ''}` });
+        }}
+      />
+      <DialogoGasto
+        abierto={gastoAbierto}
+        compraId={compra.id}
+        onCerrar={() => setGastoAbierto(false)}
+        onGuardado={(c, g) => {
+          setGastoAbierto(false);
+          onCambio(c);
+          avisar({ tono: 'ok', titulo: 'Gasto agregado.', detalle: `${g.descripcion} · ${clp(g.montoNeto)} netos repartidos entre las líneas.` });
         }}
       />
     </div>
@@ -1615,7 +2074,12 @@ export function CompraDetalle() {
             detalle={`${fecha(compra.fechaDocumento)} · ${compra.moneda}${compra.moneda !== 'CLP' && compra.tipoCambio ? ` × ${compra.tipoCambio.toLocaleString('es-CL')}` : ''}${compra.recibidaEn && compra.recibidaPor ? ` · recibida ${fecha(compra.recibidaEn)} por ${compra.recibidaPor.nombre}` : ''}`}
           />
           <TarjetaCifra rotulo="Entran" valor={`${unidadesTotales} u`} detalle={`${compra.lineas.length} línea${compra.lineas.length === 1 ? '' : 's'}${sinVincular.length ? ` · ${sinVincular.length} sin vincular` : ''} · ${compra.ubicacion.nombre}`} grande />
-          <TarjetaCifra rotulo="Total" valor={clp(compra.total)} detalle={`neto ${clp(compra.neto)} · impuestos ${clp(compra.impuestos)}${compra.gastosExtra ? ` · gastos ${clp(compra.gastosExtra)}` : ''}`} grande />
+          <TarjetaCifra
+            rotulo={compra.moneda === 'CLP' ? 'Total' : 'Desembolso'}
+            valor={clp(compra.total)}
+            detalle={compra.moneda === 'CLP' ? `neto ${clp(compra.neto)} · impuestos ${clp(compra.impuestos)}` : `costo ${clp(compra.neto)} · IVA a recuperar ${clp(compra.impuestos)}${compra.gastosExtra ? ` · sin documento ${clp(compra.gastosExtra)}` : ''}`}
+            grande
+          />
         </div>
 
         {borrador ? (
@@ -1632,6 +2096,8 @@ export function CompraDetalle() {
         ) : null}
         {compra.nota ? <div className="whitespace-pre-line text-chico text-lab2">{compra.nota}</div> : null}
         {compra.advertencias?.length ? <Advertencias lista={compra.advertencias} /> : null}
+
+        {compra.moneda !== 'CLP' ? <SeccionImportacion compra={compra} onCambio={setCompra} /> : null}
 
         <TablaLineas
           modo="detalle"

@@ -4,7 +4,7 @@
 |---|---|
 | **Proyecto** | `onplay-core` 2.0 · Etapa 6 (compras) |
 | **Fecha** | 11 de septiembre de 2026 (revisado el mismo día con los documentos reales de `docs/pdf/INTERNACIONAL/`) |
-| **Estado** | Recopilación para el dueño (R-030), **confirmada con dos importaciones reales completas y una por courier**. Propuesta de Fase 2 «costos de importación» (C12b); **no construida** (P1) |
+| **Estado** | Recopilación para el dueño (R-030), **confirmada con dos importaciones reales completas y una por courier**. C12b **construido el 2026-09-11** (R-031) tras confirmar el dueño que el contador recupera el IVA; §7 describe lo hecho |
 | **Fuentes** | Aduana de Chile ([preguntas frecuentes de importación](https://www.aduana.cl/todas-las-preguntas-frecuentes-para-importaciones/aduana/2007-02-28/161116.html), [¿cuánto impuesto se paga al importar?](https://www.aduana.cl/cuanto-impuesto-se-paga-al-importar/aduana/2022-06-29/121230.html), [valoración de mercancías](https://www.aduana.cl/valoracion-de-mercancias/aduana/2019-01-04/161839.html), [TLC Chile–EE. UU.](https://www.aduana.cl/tratado-de-libre-comercio-chile-estados-unidos/aduana/2007-07-11/153552.html)), Ley del IVA art. 23 vía [Laudus](https://laudus.cl/contabilidad/el-iva-de-las-importaciones/), UPS Chile ([aranceles](https://www.ups.com/cl/es/shipping/international-shipping/tariffs)), [Aduanas Salazar](https://aduanasalazar.cl/ad-valorem-impuestos-aduana-2026/), [Seguros Equos](https://www.segurosequos.com/blog-de-seguros/valor-aduanero); **documentos reales** en `docs/pdf/INTERNACIONAL/` (§0) |
 
 ---
@@ -90,13 +90,14 @@ La tienda es contribuyente de IVA (emite boletas con IVA), así que:
 **Costo puesto en la tienda de una importación**:
 
 ```
-costo = FOB + flete + seguro (2 % presunto)          ← CIF
+costo = FOB + flete (lo que se paga al proveedor)
       + ad valorem (6 % del CIF)                     ← de la DIN, en pesos
       + honorarios y gastos del agente (netos)       ← fijo, ≈ $112.400
       + cargo terminal / manejo de UPS (neto)
+      + póliza de seguro, solo si se contrató una
 ```
 
-y **fuera del costo**: IVA de importación e IVA de los servicios.
+y **fuera del costo**: IVA de importación e IVA de los servicios, y el **seguro presunto** (el 2 % lo agrega Aduana solo para calcular los impuestos; cuando no hay póliza no se le paga a nadie).
 
 **Consecuencia para D-E6-1** (11-SDD §5.3, «costo unitario con IVA e impuestos específicos»): para el margen da lo mismo, porque el precio de venta también lleva IVA y el 19 % se cancela; pero **el costo contable real es sin IVA**. Recomendación: guardar en la compra **ambos** (neto y bruto) como ya se hace por línea, mostrar el margen sobre bruto como hoy, y que la Fase 3 (margen) reporte también sobre neto para el contador. En las importaciones el IVA no debe entrar a `gastosExtra` (hoy es un solo número y el dueño podría sumarlo por error).
 
@@ -105,27 +106,29 @@ y **fuera del costo**: IVA de importación e IVA de los servicios.
 | | Junio 2026 | Agosto 2026 |
 |---|---|---|
 | FOB en pesos (al dólar aduanero) | $4.236.974 | $7.617.673 |
-| CIF en pesos | $4.606.969 | $8.382.314 |
+| FOB + flete en pesos (lo pagado a Coqui) | $4.522.233 | $8.229.957 |
 | + ad valorem | $276.427 | $502.934 |
 | + agente neto | $112.294 | $112.498 |
 | + UPS neto | $122.497 | $150.814 |
-| **= Costo puesto en la tienda** | **$5.118.187** | **$9.148.560** |
+| **= Costo puesto en la tienda** | **$5.033.451** | **$8.996.203** |
 | IVA recuperable (importación + agente + UPS) | $972.445 | $1.738.229 |
-| **Desembolso total** | **$6.090.632** | **$10.886.789** |
-| Costos sobre el CIF (arancel + servicios) | **11,1 %** | **9,1 %** |
-| Costo puesto en la tienda sobre el FOB | **+20,8 %** | **+20,1 %** |
+| **Desembolso total** | **$6.005.896** | **$10.734.432** |
+| Arancel + servicios sobre el CIF | **11,1 %** | **9,1 %** |
+| Costo puesto en la tienda sobre el FOB | **+18,8 %** | **+18,1 %** |
 
-Regla práctica para el dueño mientras C12b no exista: **el costo real de lo que compra a Coqui es el precio FOB más un 20 %** (flete ≈ 7–8 %, seguro 2 %, arancel ≈ 6,5 % del FOB, agente + UPS ≈ 3–5 % según el tamaño del pedido). El desembolso es un 19 % más que eso, pero ese IVA vuelve en el F29. Como el agente y el cargo terminal son casi fijos, **un pedido más grande los diluye** (5 % del CIF en junio, 3 % en agosto).
+(El seguro presunto —US$ 94,70 y 162,85— no está en la suma: solo sirvió para calcular los impuestos.)
 
-Con la compra de junio: el ítem `BAN2850164` (36 unidades, CIF US$ 2.812,93 = $2.516.982) carga 6 % de arancel ($151.019) y su parte de agente + UPS (2.812,93 ÷ 5.148,66 = 54,6 % de $234.791 = $128.276): costo puesto en la tienda $2.796.278 → **$77.674 por unidad**, contra US$ 71,86 × 894,79 = $64.302 de FOB.
+Regla práctica para el dueño: **el costo real de lo que compra a Coqui es el precio FOB más un 18–19 %** (flete ≈ 7–8 %, arancel ≈ 6,5 % del FOB, agente + UPS ≈ 3–5 % según el tamaño del pedido). El desembolso es un 19 % más que eso, pero ese IVA vuelve en el F29. Como el agente y el cargo terminal son casi fijos, **un pedido más grande los diluye** (5 % del CIF en junio, 3 % en agosto). El sistema muestra esta cifra como «Sobre el FOB» en la compra.
+
+Con la compra de junio: el ítem `BAN2850164` (36 unidades, FOB US$ 2.587,02 = 54,6 % del pedido) paga su parte del flete (US$ 174,18), 6 % de arancel sobre su CIF de US$ 2.812,93 ($151.019) y su parte de agente + UPS (54,6 % de $234.791 = $128.277): costo puesto en la tienda $2.749.990 → **$76.389 por unidad**, contra US$ 71,86 × 894,79 = $64.302 de FOB.
 
 ## 6. Tratado con Estados Unidos: cuándo el arancel es 0 %
 
 El TLC Chile–EE. UU. deja en 0 % el ad valorem **solo para mercancía originaria de Estados Unidos** y con certificación de origen del exportador. Lo que Coqui vende (Bandai, Wizards, Ultimate Guard) se fabrica en Japón, China o Europa: la DIN real dice **país de origen Japón, país de adquisición EE. UU., acuerdo comercial «0»**, y cobró el 6 %. Chile tiene acuerdo con Japón, pero exige embarque directo desde Japón, que no es el caso. En la práctica, para estas compras el arancel es 6 % salvo que el proveedor emita certificación de origen estadounidense para lo que sí sea de allá.
 
-## 7. Propuesta para el sistema (E6 Fase 2 · C12b «Costos de importación») — agendada
+## 7. Lo que hace el sistema (C12b «Costos de importación», construido el 2026-09-11 — 11-SDD §6.7)
 
-Hoy una compra en USD pide **tipo de cambio** y un único **`gastosExtra` en CLP** que se reparte por monto (11-SDD §6.6). Sirve, pero deja el cálculo de §4 en la cabeza del dueño, no distingue lo que es crédito fiscal y no deja rastro de la DIN. Con los documentos reales la propuesta queda así:
+Antes una compra en USD pedía **tipo de cambio** y un único **`gastosExtra` en CLP** que se repartía por monto (11-SDD §6.6): dejaba el cálculo de §4 en la cabeza del dueño, no distinguía lo que es crédito fiscal y no dejaba rastro de la DIN. Con los documentos reales quedó así (la propuesta original, ya construida):
 
 1. **Sección «Importación» en la compra** (solo si `moneda ≠ CLP`), dos caminos:
    - **Con DIN** (agente): se **sube el PDF de la DIN** y un lector nuevo (`lectores/din.ts`, la DIN sí trae texto) saca número, fecha de aceptación, dólar aduanero, FOB, flete, seguro, CIF, ad valorem e IVA en USD y en pesos, y los ítems con su código de proveedor. Se cuadra contra la compra: Σ FOB de las líneas = FOB de la DIN (aviso si no).
@@ -134,7 +137,7 @@ Hoy una compra en USD pide **tipo de cambio** y un único **`gastosExtra` en CLP
 3. **Costo por línea** = reparto de (CIF + arancel + gastos netos) por monto FOB de cada línea, como hoy hace `convertirLineasAClp` con `gastosExtra`. `CompraLinea.neto` = ese costo; `impuestos` = 0; `total` = neto (sin IVA). **D-E6-1 se reescribe:** «costo unitario = costo puesto en la tienda sin IVA recuperable; los impuestos no recuperables (ad valorem, ILA) sí van». El tipo de cambio de la mercancía es el que **pagó el dueño** (banco/tarjeta); los impuestos entran en pesos tal como los giró Aduana.
 4. **Tarjetas del detalle:** «Costo puesto en la tienda», «IVA a recuperar», «Desembolso», «% sobre FOB», para que el dueño vea el 20 % de §5 sin calcular.
 
-Alcance estimado: una migración (`Compra.fob/flete/seguro/cif/arancelPct/arancel/ivaImportacion/tipoCambioAduana/dinNumero/dinFecha` + tabla `CompraGasto`), reglas puras en `dominio/compra.ts` (`calcularImportacion`, `repartirCostoImportacion`), lector `din` con fixture real de `127395-5.pdf` (y opcionalmente `ups` con `1131950`), un paso «Importación» en el flujo por pasos entre Moneda y Proveedor, y ajustes en `POST /compras/leer` y `POST /compras`. Queda como C12b en 11-SDD §3.
+Hecho: migración `20260911150000_e6_importacion` (`Compra.fob/flete/seguro/cif/arancelPct/tipoCambioAduana/arancel/ivaImportacion/dinNumero/dinFecha` + tabla `CompraGasto`), reglas puras en `dominio/compra.ts` (`calcularImportacion`, `resumenImportacion`, `convertirLineasAClp` con IVA aparte), lector `din` con fixture real de `127395-5.pdf`, rutas `POST /compras/leer-din`, `PUT /compras/:id/importacion`, `POST/DELETE /compras/:id/gastos`, y la sección «Importación» en el detalle de la compra (no en el flujo de carga: la DIN llega después de la factura). Verificado por HTTP con la DIN real y el invoice 097440 (costo puesto en la tienda $739.653 con el manejo de UPS, IVA a recuperar $142.392, desembolso $882.045). No se hizo lector para la factura de UPS por courier (se digita como gasto) ni OCR para las del agente.
 
 ## 8. Dudas para el contador (antes de construir)
 

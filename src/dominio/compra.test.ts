@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calcularImportacion,
   calcularLinea,
   convertirLineasAClp,
+  resumenImportacion,
   cuadrarTotales,
   fechaIsoDesdeCl,
   lectorPorRut,
@@ -135,6 +137,18 @@ describe('moneda extranjera — §6.6', () => {
     expect(r[2]!.neto).toBe(r[2]!.total);
     expect(r[2]!.impuestos).toBe(0);
   });
+  it('reparte también el IVA recuperable aparte del costo (§6.7)', () => {
+    const lineas = [
+      { ...base, codigoProveedor: 'A', totalOriginal: 100 },
+      { ...base, codigoProveedor: 'B', totalOriginal: 0 },
+      { ...base, codigoProveedor: 'C', totalOriginal: 300 },
+    ];
+    const r = convertirLineasAClp(lineas, 900, 40000, 76000);
+    expect(r[0]).toMatchObject({ neto: 90000 + 10000, impuestos: 19000, total: 119000 });
+    expect(r[1]).toMatchObject({ neto: 0, impuestos: 0, total: 0 });
+    expect(r[2]).toMatchObject({ neto: 270000 + 30000, impuestos: 57000, total: 357000 });
+    expect(r.reduce((a, l) => a + l.impuestos, 0)).toBe(76000);
+  });
   it('margen y precio sugerido', () => {
     expect(margenPorcentaje(1500, 708)).toBe(52.8);
     expect(margenPorcentaje(0, 708)).toBeNull();
@@ -142,6 +156,46 @@ describe('moneda extranjera — §6.6', () => {
     expect(precioParaMargen(708, 40)).toBe(1180); // 708 / 0,6 = 1180
     expect(precioParaMargen(487, 50)).toBe(980); // 974 → 980
     expect(precioParaMargen(100, 100)).toBe(0);
+  });
+});
+
+describe('importación (C12b, docs/13)', () => {
+  it('reproduce la DIN 1150127395-5 de Coqui (junio 2026)', () => {
+    const imp = calcularImportacion({ fob: 4735.16, flete: 318.8, tipoCambioAduana: 894.79 });
+    expect(imp.seguro).toBe(94.7); // presunto 2 %
+    expect(imp.seguroPresunto).toBe(true);
+    expect(calcularImportacion({ fob: 4735.16, flete: 318.8, seguro: 94.7, tipoCambioAduana: 894.79 }).seguroPresunto).toBe(true); // la DIN lo trae escrito
+    expect(imp.cif).toBe(5148.66);
+    expect(imp.arancelOriginal).toBe(308.92); // la DIN dice 308,93: suma por ítem, ±1 centavo
+    expect(imp.ivaOriginal).toBeCloseTo(1036.94, 1);
+    expect(imp.totalGiroOriginal).toBeCloseTo(1345.86, 1);
+    expect(Math.abs(imp.totalGiro - 1204262)).toBeLessThanOrEqual(20); // $1.204.262 pagados a Tesorería
+    expect(Math.abs(imp.arancel - 276427)).toBeLessThanOrEqual(20);
+    expect(Math.abs(imp.ivaImportacion - 927835)).toBeLessThanOrEqual(20);
+  });
+  it('acepta seguro real y arancel 0 % con certificado de origen', () => {
+    const imp = calcularImportacion({ fob: 1000, flete: 100, seguro: 5, arancelPct: 0, tipoCambioAduana: 900 });
+    expect(imp).toMatchObject({ seguro: 5, seguroPresunto: false, cif: 1105, arancelPct: 0, arancelOriginal: 0, ivaOriginal: 209.95, arancel: 0, ivaImportacion: 188955 });
+  });
+  it('resume costo puesto en la tienda, IVA a recuperar y desembolso (docs/13 §5)', () => {
+    // Junio 2026: mercancía + flete al dólar aduanero, arancel, agente y UPS netos; IVA aparte.
+    const lineas = convertirLineasAClp([{ ...base, totalOriginal: 5053.96 }], 894.79, 276427 + 112294 + 122497, 927835 + 21336 + 23274);
+    const r = resumenImportacion(lineas, { tipoCambio: 894.79, fob: 4735.16, flete: 318.8 }, [
+      { montoNeto: 112294, iva: 21336 },
+      { montoNeto: 122497, iva: 23274 },
+    ]);
+    expect(r.costoPuesto).toBe(5033451);
+    expect(r.ivaRecuperable).toBe(972445);
+    expect(r.desembolso).toBe(6005896);
+    expect(r.fobClp).toBe(4236974);
+    expect(r.sobreFobPct).toBe(18.8);
+    expect(r.gastosNetos).toBe(234791);
+    expect(r.cuadre).toEqual({ lineas: 5053.96, din: 5053.96, difiere: false });
+  });
+  it('avisa si las líneas no cuadran con FOB + flete de la DIN', () => {
+    const r = resumenImportacion([{ neto: 0, impuestos: 0, total: 0, totalOriginal: 4000 }], { tipoCambio: 900, fob: 4735.16, flete: 318.8 }, []);
+    expect(r.cuadre?.difiere).toBe(true);
+    expect(resumenImportacion([], { tipoCambio: null, fob: null, flete: null }, []).cuadre).toBeNull();
   });
 });
 

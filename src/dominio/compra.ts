@@ -152,27 +152,143 @@ export function parsearNumeroUs(texto: string): number | null {
 
 /**
  * Documento en moneda extranjera (§6.6): pasa cada línea a CLP con el tipo de cambio y reparte los
- * gastos de importación (flete, aduana, IVA de importación, en CLP) según el monto original de cada
- * línea, con el resto en la última línea con monto, para que Σ total = round(totalOriginal × tc) + gastos.
- * En CLP no hay desglose de impuestos: neto = total, impuestos = 0 (los impuestos de importación van en gastos).
+ * costos de importación en CLP (`costoExtra`: arancel, agente, courier, gastos sin documento) y el
+ * IVA recuperable (`ivaExtra`: IVA de importación + IVA de los servicios, §6.7) según el monto
+ * original de cada línea, con el resto en la última línea con monto, para que
+ * Σ neto = round(totalOriginal × tc) + costoExtra y Σ impuestos = ivaExtra.
+ * Sin IVA (solo tipo de cambio): neto = total, impuestos = 0.
  */
-export function convertirLineasAClp(lineas: LineaLeida[], tipoCambio: number, gastosExtra: number): LineaLeida[] {
+export function convertirLineasAClp(lineas: LineaLeida[], tipoCambio: number, costoExtra: number, ivaExtra = 0): LineaLeida[] {
   const base = lineas.map((l) => l.totalOriginal ?? 0);
   const sumaBase = base.reduce((a, b) => a + b, 0);
-  const gastos = Math.max(0, Math.round(gastosExtra));
-  let asignado = 0;
+  const costo = Math.max(0, Math.round(costoExtra));
+  const iva = Math.max(0, Math.round(ivaExtra));
+  let asignadoCosto = 0;
+  let asignadoIva = 0;
   let ultimaConMonto = -1;
   base.forEach((b, i) => {
     if (b > 0) ultimaConMonto = i;
   });
   return lineas.map((l, i) => {
     const enClp = Math.round((l.totalOriginal ?? 0) * tipoCambio);
-    let parte = sumaBase > 0 ? Math.round((gastos * base[i]!) / sumaBase) : 0;
-    if (i === ultimaConMonto) parte = gastos - asignado;
-    asignado += parte;
-    const total = enClp + parte;
-    return { ...l, neto: total, impuestos: 0, total };
+    let parteCosto = sumaBase > 0 ? Math.round((costo * base[i]!) / sumaBase) : 0;
+    let parteIva = sumaBase > 0 ? Math.round((iva * base[i]!) / sumaBase) : 0;
+    if (i === ultimaConMonto) {
+      parteCosto = costo - asignadoCosto;
+      parteIva = iva - asignadoIva;
+    }
+    asignadoCosto += parteCosto;
+    asignadoIva += parteIva;
+    const neto = enClp + parteCosto;
+    return { ...l, neto, impuestos: parteIva, total: neto + parteIva };
   });
+}
+
+/* ---------- C12b · Importación (§6.7, docs/13) ---------- */
+
+/** Lo que dice la DIN (o lo que digita la persona) para calcular los impuestos de importación. */
+export interface EntradaImportacion {
+  fob: number; // moneda del documento
+  flete: number;
+  /** Seguro real; null o ausente → presunto 2 % del FOB (Aduana, Res. 1.300/2006). */
+  seguro?: number | null;
+  /** Ad valorem en %; null → 6 (regla general). 0 con certificado de origen. */
+  arancelPct?: number | null;
+  /** Dólar aduanero (CLP por unidad) con el que Aduana gira los impuestos. */
+  tipoCambioAduana: number;
+}
+
+export interface Importacion {
+  fob: number;
+  flete: number;
+  seguro: number;
+  seguroPresunto: boolean;
+  cif: number;
+  arancelPct: number;
+  arancelOriginal: number; // en la moneda del documento
+  ivaOriginal: number;
+  totalGiroOriginal: number;
+  arancel: number; // CLP: costo
+  ivaImportacion: number; // CLP: crédito fiscal
+  totalGiro: number; // CLP: lo que se paga a Tesorería
+}
+
+const centavos = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * CIF = FOB + flete + seguro; ad valorem = % del CIF; IVA = 19 % de (CIF + ad valorem) (docs/13 §1).
+ * Confirmado con la DIN 1150127395-5: FOB 4.735,16 + 318,80 + 94,70 → CIF 5.148,66, 308,93 y 1.036,93.
+ */
+export function calcularImportacion(e: EntradaImportacion): Importacion {
+  const fob = Math.max(0, e.fob);
+  const flete = Math.max(0, e.flete);
+  // Presunto si no viene o si es exactamente el 2 % del FOB (así lo pone la DIN cuando no hay póliza).
+  const seguroPresunto = e.seguro === null || e.seguro === undefined || Math.abs(e.seguro - centavos(fob * 0.02)) < 0.011;
+  const seguro = e.seguro === null || e.seguro === undefined ? centavos(fob * 0.02) : Math.max(0, e.seguro);
+  const arancelPct = e.arancelPct === null || e.arancelPct === undefined ? 6 : Math.max(0, e.arancelPct);
+  const cif = centavos(fob + flete + seguro);
+  const arancelOriginal = centavos((cif * arancelPct) / 100);
+  const ivaOriginal = centavos((cif + arancelOriginal) * 0.19);
+  const totalGiroOriginal = centavos(arancelOriginal + ivaOriginal);
+  const tc = Math.max(0, e.tipoCambioAduana);
+  return {
+    fob,
+    flete,
+    seguro,
+    seguroPresunto,
+    cif,
+    arancelPct,
+    arancelOriginal,
+    ivaOriginal,
+    totalGiroOriginal,
+    arancel: Math.round(arancelOriginal * tc),
+    ivaImportacion: Math.round(ivaOriginal * tc),
+    totalGiro: Math.round(totalGiroOriginal * tc),
+  };
+}
+
+export interface GastoImportacion {
+  montoNeto: number; // CLP: costo
+  iva: number; // CLP: crédito fiscal
+}
+
+export interface ResumenImportacion {
+  /** Σ neto de las líneas: mercancía + flete + arancel + gastos netos. Lo que cuesta lo que llegó. */
+  costoPuesto: number;
+  /** Σ impuestos de las líneas: IVA de importación + IVA de los servicios. Vuelve en el F29. */
+  ivaRecuperable: number;
+  /** costoPuesto + ivaRecuperable: lo que salió de la caja. */
+  desembolso: number;
+  fobClp: number | null;
+  /** (costoPuesto / fobClp − 1) × 100, una cifra: cuánto encarece la importación al precio de lista. */
+  sobreFobPct: number | null;
+  gastosNetos: number;
+  ivaGastos: number;
+  /** Σ totalOriginal de las líneas contra FOB + flete de la DIN: si difiere > 1 %, algo no cuadra. */
+  cuadre: { lineas: number; din: number; difiere: boolean } | null;
+}
+
+/** Cifras de la tarjeta «Importación» a partir de las líneas ya repartidas (docs/13 §5). */
+export function resumenImportacion(
+  lineas: { neto: number; impuestos: number; total: number; totalOriginal?: number | null }[],
+  compra: { tipoCambio: number | null; fob: number | null; flete: number | null },
+  gastos: GastoImportacion[],
+): ResumenImportacion {
+  const costoPuesto = lineas.reduce((a, l) => a + l.neto, 0);
+  const ivaRecuperable = lineas.reduce((a, l) => a + l.impuestos, 0);
+  const fobClp = compra.fob != null && compra.tipoCambio ? Math.round(compra.fob * compra.tipoCambio) : null;
+  const sumaOriginal = centavos(lineas.reduce((a, l) => a + (l.totalOriginal ?? 0), 0));
+  const din = compra.fob != null ? centavos(compra.fob + (compra.flete ?? 0)) : null;
+  return {
+    costoPuesto,
+    ivaRecuperable,
+    desembolso: costoPuesto + ivaRecuperable,
+    fobClp,
+    sobreFobPct: fobClp ? Math.round((costoPuesto / fobClp - 1) * 1000) / 10 : null,
+    gastosNetos: gastos.reduce((a, g) => a + g.montoNeto, 0),
+    ivaGastos: gastos.reduce((a, g) => a + g.iva, 0),
+    cuadre: din !== null ? { lineas: sumaOriginal, din, difiere: din > 0 && Math.abs(sumaOriginal - din) / din > 0.01 } : null,
+  };
 }
 
 /** Margen sobre el precio de venta, en %: (venta − costo) / venta. Null si no hay precio. */

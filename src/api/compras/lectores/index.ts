@@ -8,6 +8,7 @@ import { leerNicoFactura, reconoceNicoFactura } from './nico_factura.js';
 import { leerCoqui, reconoceCoqui } from './coqui.js';
 import { leerDevir, reconoceDevir } from './devir.js';
 import { leerAsmodee, reconoceAsmodee } from './asmodee.js';
+import { reconoceDin } from './din.js';
 
 export interface Lector {
   clave: Exclude<LectorFactura, 'manual'>;
@@ -32,7 +33,11 @@ export function lectorPorClave(clave: string): Lector | null {
   return LECTORES.find((l) => l.clave === clave) ?? null;
 }
 
-/** Elige el lector que reconoce el documento; null si ninguno lo entiende (→ carga manual). */
+/**
+ * Elige el lector que reconoce el documento; null si ninguno lo entiende (→ carga manual).
+ * Una DIN no es una factura (menciona al consignante, p. ej. «COQUI HOBBY»): se descarta antes.
+ */
 export function detectarLector(paginas: PaginaTexto[]): Lector | null {
+  if (reconoceDin(paginas)) return null;
   return LECTORES.find((l) => l.reconoce(paginas)) ?? null;
 }

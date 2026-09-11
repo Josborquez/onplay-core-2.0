@@ -94,7 +94,7 @@ La alternativa VPS (Nginx + pm2 + `prisma migrate deploy`) queda documentada en 
 - **E2 Inventario** (`docs/03`, guía `docs/09`): libro de stock append-only, recuentos, alertas, devoluciones, movimientos de caja. Regla R-014: el stock nunca queda negativo.
 - **E3 Sincronización bidireccional** (`docs/06`): ingesta de pedidos, push de precio y de stock con verificación previa, discrepancias. Producción exige la Fase 0 del dueño (claves de escritura, candado, respaldo, staging).
 - **E4 Cliente y monedero** (`docs/07`): clientes en el mostrador, saldo como `SUM()`, vinculación con las cuentas de las tiendas. Fase 5 (crédito y fusión) bloqueada hasta aprobación.
-- **E6 Compras** (`docs/11`, Fase 1): proveedores, factura de compra leída por distribuidor desde el PDF (Andina primero; los demás se digitan), vinculación de líneas que se recuerda por código, recepción al libro de stock con costo de referencia. Costo promedio y margen agendados.
+- **E6 Compras** (`docs/11`, Fase 1): proveedores, factura de compra leída por distribuidor desde el PDF (Andina primero; los demás se digitan), vinculación de líneas que se recuerda por código, recepción al libro de stock con costo de referencia; documentos en USD con tipo de cambio y, para importaciones, la DIN (leída del PDF o digitada) y los gastos del agente y del courier con el IVA aparte como crédito fiscal (`docs/13`). Costo promedio y margen agendados.
 
 ## Estructura
 

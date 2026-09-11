@@ -814,7 +814,21 @@ model Compra {
   creadoEn        DateTime            @default(now())
   actualizadoEn   DateTime            @updatedAt
 
+  // C12b — importación (11-SDD §6.7, docs/13 §7). Solo si moneda ≠ CLP. Montos en la moneda del documento
+  // salvo los marcados CLP. El seguro presunto (2 % del FOB) es solo base de impuestos, no es costo.
+  fob              Float?
+  flete            Float?
+  seguro           Float?
+  cif              Float? // fob + flete + seguro
+  arancelPct       Float? // 6 por regla general; 0 con certificado de origen
+  tipoCambioAduana Float? // dólar aduanero de la DIN (los impuestos se giran con este)
+  arancel          Int? // CLP: ad valorem girado. Costo (se reparte entre las líneas)
+  ivaImportacion   Int? // CLP: IVA girado por Aduana. Crédito fiscal: NO entra al costo
+  dinNumero        String? // "1150127395-5"
+  dinFecha         DateTime? // fecha de aceptación
+
   lineas CompraLinea[]
+  gastos CompraGasto[]
 
   @@unique([proveedorId, numeroDocumento]) // la misma factura no se carga dos veces
   @@index([estado, fechaDocumento])
@@ -842,4 +856,28 @@ model CompraLinea {
 
   @@index([compraId, orden])
   @@index([productoId])
+}
+
+// C12b: gastos de una importación con su documento (factura del agente, de UPS, póliza…).
+// El neto entra al costo de las líneas (repartido por monto); el IVA es crédito fiscal.
+model CompraGasto {
+  id          String               @id @default(cuid())
+  compraId    String
+  compra      Compra               @relation(fields: [compraId], references: [id])
+  tipo        TipoGastoImportacion
+  descripcion String // "Honorarios y gastos de despacho", "Cargo terminal"
+  montoNeto   Int // CLP: costo
+  iva         Int                  @default(0) // CLP: crédito fiscal
+  documento   String? // "Factura 37433"
+  fecha       DateTime?
+  creadoEn    DateTime             @default(now())
+
+  @@index([compraId])
+}
+
+enum TipoGastoImportacion {
+  agente // agente de aduanas: honorarios + gastos de despacho
+  courier // UPS/DHL: cargo terminal, manejo, gestión aduanera
+  seguro // póliza real (si no hay, Aduana presume 2 % y no se paga a nadie)
+  otro
 }

@@ -80,6 +80,79 @@ export interface CompraResumen {
   creadoEn: string;
 }
 
+/** C12b — importación (11-SDD §6.7). */
+export type TipoGastoImportacion = 'agente' | 'courier' | 'seguro' | 'otro';
+
+export const ETIQUETA_TIPO_GASTO: Record<TipoGastoImportacion, string> = {
+  agente: 'Agente de aduanas',
+  courier: 'Courier (UPS, DHL…)',
+  seguro: 'Seguro (póliza real)',
+  otro: 'Otro',
+};
+
+export interface CompraGasto {
+  id: string;
+  tipo: TipoGastoImportacion;
+  descripcion: string;
+  montoNeto: number;
+  iva: number;
+  documento: string | null;
+  fecha: string | null;
+}
+
+export interface ResumenImportacion {
+  costoPuesto: number;
+  ivaRecuperable: number;
+  desembolso: number;
+  fobClp: number | null;
+  sobreFobPct: number | null;
+  gastosNetos: number;
+  ivaGastos: number;
+  cuadre: { lineas: number; din: number; difiere: boolean } | null;
+}
+
+export interface ItemDin {
+  numero: number;
+  codigo: string;
+  cif: number;
+  arancel: number | null;
+  iva: number | null;
+  cantidad: number | null;
+  fobUnitario: number | null;
+}
+
+export interface DinLeida {
+  numero: string | null;
+  fechaAceptacion: string | null;
+  tipoCambio: number | null;
+  fob: number | null;
+  flete: number | null;
+  seguro: number | null;
+  cif: number | null;
+  arancelPct: number | null;
+  arancelOriginal: number | null;
+  ivaOriginal: number | null;
+  totalGiroOriginal: number | null;
+  totalGiro: number | null;
+  despachador: string | null;
+  consignante: string | null;
+  items: ItemDin[];
+  advertencias: string[];
+}
+
+export interface CalculoImportacion {
+  seguro: number;
+  seguroPresunto: boolean;
+  cif: number;
+  arancelPct: number;
+  arancelOriginal: number;
+  ivaOriginal: number;
+  totalGiroOriginal: number;
+  arancel: number;
+  ivaImportacion: number;
+  totalGiro: number;
+}
+
 export interface CompraDetalle {
   id: string;
   proveedor: { id: string; nombre: string; rut: string | null; lector: LectorFactura };
@@ -105,6 +178,19 @@ export interface CompraDetalle {
   recibidaEn: string | null;
   creadoEn: string;
   lineas: LineaCompra[];
+  // C12b (solo con sentido si moneda ≠ CLP)
+  fob: number | null;
+  flete: number | null;
+  seguro: number | null;
+  cif: number | null;
+  arancelPct: number | null;
+  tipoCambioAduana: number | null;
+  arancel: number | null;
+  ivaImportacion: number | null;
+  dinNumero: string | null;
+  dinFecha: string | null;
+  gastos: CompraGasto[];
+  resumenImportacion: ResumenImportacion | null;
 }
 
 /** Lo que devuelve POST /compras/leer: una propuesta que la persona revisa antes de guardar. */
