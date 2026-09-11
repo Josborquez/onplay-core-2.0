@@ -65,6 +65,44 @@ describe('lector Coqui — Sales Order 0092856', () => {
     expect(d.lineas.reduce((a, l) => a + (l.totalOriginal ?? 0), 0)).toBeCloseTo(204.3, 2);
   });
 
+  it('también lee el INVOICE (referencia 097440): celdas enteras, fecha 01-Sep-2026 y envío repartido', () => {
+    // Celdas reales del invoice 097440 (docs/pdf/097440.pdf).
+    const invoice: PaginaTexto[] = [
+      [
+        ['INVOICE'],
+        ['Coqui Hobby'],
+        ['BILL TO', 'SHIP TO', 'Reference No.: 097440'],
+        ['Onplay Games', 'Onplay Games', 'Date: 01-Sep-2026'],
+        ['Santiago 8320175', 'Santiago 9071472', 'Currency: USD'],
+        ['NO.', 'ITEM', 'QTY.', 'UOM', 'MSRP', 'PRICE', 'EXT'],
+        ['PRICE'],
+        ['1', '(BANOPTK2816) One Piece TCG: Store Tournament Kit 2026 Vol.3', '4', 'Each', '0.00', '0.00', '0.00'],
+        ['3', '(BAN2849822) Digimon TCG: Booster Display Timeless Bonds (BT-26)', '4', 'Each', '119.76', '68.25', '273.00'],
+        ['(24ct)'],
+        ['5', '(WOCD5663) MTG: The Hobbit Gift Bundle', '2', 'Each', '89.99', '59.00', '118.00'],
+        ['6', '(BAN2855305) DBS TCG Fusion World: Story Booster 01 Display [ST01]', '2', 'Each', '119.80', '68.75', '137.50'],
+        ['(20 Packs)'],
+        ['Please remit payment to:', 'Sales Total:', '528.50'],
+        ['Tax Total:', '0.00'],
+        ['Shipping & Handling:', '156.71'],
+        ['Total (USD):', '685.21'],
+        ['Page 1/1 (Reference No. 097440)'],
+      ],
+    ];
+    const d = leerCoqui(invoice);
+    expect(detectarLector(invoice)?.clave).toBe('coqui');
+    expect(d.numeroDocumento).toBe('097440');
+    expect(d.fechaDocumento).toBe('2026-09-01');
+    expect(d.moneda).toBe('USD');
+    expect(d.totalOriginal).toBe(685.21);
+    expect(d.lineas).toHaveLength(4);
+    expect(d.lineas[1]!.descripcion).toBe('Digimon TCG: Booster Display Timeless Bonds (BT-26) (24ct)');
+    expect(d.lineas[0]!.totalOriginal).toBe(0); // kit gratis no carga envío
+    // Σ montos = Sales Total + envío = Total (USD), centavo a centavo.
+    expect(d.lineas.reduce((a, l) => a + (l.totalOriginal ?? 0), 0)).toBeCloseTo(685.21, 2);
+    expect(d.advertencias.some((a) => a.includes('envío'))).toBe(true);
+  });
+
   it('avisa por los kits gratis y por los displays, y no cuenta «(100 ct.)» como unidades por bulto', () => {
     const d = leerCoqui(PAGINAS);
     expect(d.lineas.find((l) => l.codigoProveedor === 'BANOPTK9564')).toMatchObject({ bultos: 4, totalOriginal: 0 });
