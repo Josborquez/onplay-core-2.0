@@ -3,113 +3,142 @@
 | | |
 |---|---|
 | **Proyecto** | `onplay-core` 2.0 · Etapa 6 (compras) |
-| **Fecha** | 11 de septiembre de 2026 |
-| **Estado** | Recopilación para el dueño (R-030). Propuesta de Fase 2 «costos de importación»; **no construida** (P1) |
-| **Fuentes** | Aduana de Chile ([preguntas frecuentes de importación](https://www.aduana.cl/todas-las-preguntas-frecuentes-para-importaciones/aduana/2007-02-28/161116.html), [¿cuánto impuesto se paga al importar?](https://www.aduana.cl/cuanto-impuesto-se-paga-al-importar/aduana/2022-06-29/121230.html), [valoración de mercancías](https://www.aduana.cl/valoracion-de-mercancias/aduana/2019-01-04/161839.html), [TLC Chile–EE. UU.](https://www.aduana.cl/tratado-de-libre-comercio-chile-estados-unidos/aduana/2007-07-11/153552.html)), Ley del IVA art. 23 vía [Laudus](https://laudus.cl/contabilidad/el-iva-de-las-importaciones/), UPS Chile ([aranceles](https://www.ups.com/cl/es/shipping/international-shipping/tariffs), [costos de envío internacional](https://www.ups.com/cl/es/shipping/international-shipping/international-shipping-costs)), [Aduanas Salazar](https://aduanasalazar.cl/ad-valorem-impuestos-aduana-2026/), [Seguros Equos](https://www.segurosequos.com/blog-de-seguros/valor-aduanero) |
-
-> **Qué se pide al dueño:** dejar en `docs/pdf/` una factura de UPS y una del agente de aduanas (más la DIN si la tiene) de una importación reciente. Con eso se confirman los cargos de §3 con cifras reales y se diseñan los campos de §5.
+| **Fecha** | 11 de septiembre de 2026 (revisado el mismo día con los documentos reales de `docs/pdf/INTERNACIONAL/`) |
+| **Estado** | Recopilación para el dueño (R-030), **confirmada con dos importaciones reales completas y una por courier**. Propuesta de Fase 2 «costos de importación» (C12b); **no construida** (P1) |
+| **Fuentes** | Aduana de Chile ([preguntas frecuentes de importación](https://www.aduana.cl/todas-las-preguntas-frecuentes-para-importaciones/aduana/2007-02-28/161116.html), [¿cuánto impuesto se paga al importar?](https://www.aduana.cl/cuanto-impuesto-se-paga-al-importar/aduana/2022-06-29/121230.html), [valoración de mercancías](https://www.aduana.cl/valoracion-de-mercancias/aduana/2019-01-04/161839.html), [TLC Chile–EE. UU.](https://www.aduana.cl/tratado-de-libre-comercio-chile-estados-unidos/aduana/2007-07-11/153552.html)), Ley del IVA art. 23 vía [Laudus](https://laudus.cl/contabilidad/el-iva-de-las-importaciones/), UPS Chile ([aranceles](https://www.ups.com/cl/es/shipping/international-shipping/tariffs)), [Aduanas Salazar](https://aduanasalazar.cl/ad-valorem-impuestos-aduana-2026/), [Seguros Equos](https://www.segurosequos.com/blog-de-seguros/valor-aduanero); **documentos reales** en `docs/pdf/INTERNACIONAL/` (§0) |
 
 ---
 
+## 0. Los documentos reales que dejó el dueño (`docs/pdf/INTERNACIONAL/`)
+
+| Archivo | Qué es | ¿Tiene texto legible por `pdfjs`? |
+|---|---|---|
+| `127395-5.pdf` | **DIN** (Declaración de Ingreso) 1150127395-5, importación de junio de 2026 desde Coqui | **Sí** (551 celdas): FOB, flete, seguro, CIF, ad valorem, IVA, total giro, tipo de cambio y **un ítem por código de Coqui** (`BAN2850164`, `FAB2602`, `FAB2601`, `FAB2513`) con su CIF, arancel e IVA |
+| `37433.pdf` | Factura 37433 del **agente de aduanas** (Julio Salinas Barrientos y Cía., RUT 86.334.100-0) por esa importación + factura UPS 1121112 + comprobante de pago a Tesorería | **No**: son imágenes escaneadas (0 celdas). Un lector automático necesitaría OCR |
+| `37849.pdf` | Lo mismo para la importación de agosto de 2026 (DIN 1150127858-2, factura 37849, UPS 1128488, pago TGR) | **No** (escaneado) |
+| `Facturas - 6R5A37NRYZD (1).pdf` | Factura UPS 1131950 de un envío chico (7,7 kg) despachado **por UPS sin agente**, septiembre de 2026 | **Sí** (105 celdas) |
+
+Con eso quedan cubiertos los tres caminos: importación grande con agente (dos veces), envío chico por courier (una vez) y la DIN.
+
 ## 1. Los tres impuestos y la base sobre la que se calculan
 
-| Concepto | Cómo se calcula | Fuente |
+| Concepto | Cómo se calcula | Confirmado en la DIN real |
 |---|---|---|
-| **Valor CIF** (base de todo) | costo de la mercancía (FOB) + **flete internacional** + **seguro** | Aduana: «Valor CIF = producto + seguro + flete» |
-| **Derecho ad valorem** | **6 % del CIF** por regla general | Aduana |
-| **IVA de importación** | **19 % sobre (CIF + ad valorem)** — el IVA también grava el arancel | Aduana |
-| Seguro cuando no hay póliza | Aduana usa un **seguro presunto del 2 % del FOB**; para el flete, si no se acredita, un presunto (≈ 5 %) | Res. 1.300/2006, Equos |
+| **Valor CIF** (base de todo) | costo de la mercancía (FOB) + **flete internacional** + **seguro** | 4.735,16 + 318,80 + 94,70 = 5.148,66 ✓ |
+| **Derecho ad valorem** | **6 % del CIF** | 308,93 = 6 % de 5.148,66 ✓ (código 223) |
+| **IVA de importación** | **19 % sobre (CIF + ad valorem)** | 1.036,93 = 19 % de 5.457,59 ✓ (código 178) |
+| Seguro cuando no hay póliza | Aduana usa un **seguro presunto del 2 % del FOB** | 94,70 = 2 % de 4.735,16 ✓ y 162,85 = 2 % de 8.142,28 ✓ |
+| Flete | el real del documento de transporte | 318,80 y 654,45: es el «Shipping & Handling» que cobra Coqui (UPS marca el envío `B/T: P/P`, flete pagado por el remitente) |
 
-Ejemplo textual de Aduana: «Valor CIF US $1.000 / Derecho ad valorem (6 % de 1.000) US $60 / IVA (19 %) (sobre 1.060) US $201,40» → tributos **US $261,40** (26,1 % del CIF).
-
-Los impuestos se pagan en **pesos** al tipo de cambio que fija Aduana para la fecha de la declaración («dólar aduanero»), no al del día de la compra.
+Los impuestos se pagan en **pesos** al tipo de cambio que fija Aduana para la fecha de la declaración («dólar aduanero»: 894,79 en junio, 935,57 en agosto), no al del día en que se pagó a Coqui. El giro se paga en Tesorería (formulario 15) antes de retirar la carga; en las dos importaciones lo pagó el agente con la provisión del dueño.
 
 ## 2. Umbrales que cambian el trámite (envíos por courier como UPS)
 
-| Valor del envío | Qué pasa |
-|---|---|
-| **≤ US$ 30 CIF** | Sin impuestos (envíos menores). Casi nunca aplica a una compra comercial |
-| **≤ US$ 1.000 FOB** | El courier hace el trámite simplificado; se pagan igual ad valorem + IVA. No hace falta agente |
-| **> US$ 1.000 FOB** | **Obligatorio contratar un agente de aduanas** (Aduana: «Si supera US$ 1.000 valor FOB, se requiere contratar un agente de aduanas»). El agente cobra honorarios por porcentaje con un mínimo |
-| Mercancía sin carácter comercial | Trámite simplificado hasta US$ 4.050 FOB; no aplica a la tienda |
-
-Las compras a Coqui (US$ 1.398,90 y US$ 685,21) caen en los dos casos: la primera exige agente; la segunda la puede despachar el courier.
-
-## 3. Quién cobra qué (tres facturas por una importación)
-
-| Quién | Qué cobra | ¿Es costo del producto? |
+| Valor del envío | Qué pasa | Caso real |
 |---|---|---|
-| **Proveedor** (Coqui) | mercancía (FOB) y a veces el flete («Shipping & Handling») | **Sí** (FOB + flete + seguro) |
-| **Aduana / Tesorería** (vía DIN, «Declaración de Ingreso») | ad valorem 6 % + IVA 19 % | ad valorem **sí**; IVA **no** (ver §4) |
-| **UPS** (o el courier) | flete internacional si no venía en la factura del proveedor; **gestión aduanera** («brokerage» / «gastos de despacho»); **cargo por adelanto de impuestos** (un % sobre los impuestos que UPS paga por ti, con mínimo); a veces almacenaje o corrección de dirección; **IVA 19 % sobre sus servicios** | servicios netos **sí**; su IVA **no** |
-| **Agente de aduanas** (obligatorio > US$ 1.000) | **honorarios** (porcentaje del CIF con mínimo), gastos (Aduana, documentos, movilización), **IVA sobre honorarios** | honorarios y gastos netos **sí**; su IVA **no** |
+| **≤ US$ 30 CIF** | Sin impuestos. No aplica a una compra comercial | — |
+| **≤ US$ 1.000 FOB** | El courier hace la «declaración de importación» simplificada; se pagan igual ad valorem + IVA. No hace falta agente | Envío 6R5A37NRYZD (7,7 kg): UPS cobró impuestos + un «manejo» de US$ 72,45 |
+| **> US$ 1.000 FOB** | **Obligatorio un agente de aduanas**; DIN normal | Despachos 127395 (US$ 4.735 FOB) y 127858 (US$ 8.142 FOB) |
 
-UPS confirma que «el destinatario será el responsable de los derechos, impuestos y cargos necesarios para recibir el envío» y que la factura comercial es obligatoria; el código arancelario (HTS) en la factura evita que Aduana clasifique a ojo.
+## 3. Quién cobra qué: las cifras reales
+
+### 3.1 Importación con agente (dos casos)
+
+| | Junio 2026 · DIN 1150127395-5 | Agosto 2026 · DIN 1150127858-2 |
+|---|---|---|
+| Carga | 4 cajas, 56,7 kg, UPS aéreo desde Miami | 7 cajas, 131,5 kg |
+| Dólar aduanero | 894,79 | 935,57 |
+| FOB (Coqui) | US$ 4.735,16 | US$ 8.142,28 |
+| Flete (S&H de Coqui) | US$ 318,80 | US$ 654,45 |
+| Seguro presunto 2 % | US$ 94,70 | US$ 162,85 |
+| **CIF** | **US$ 5.148,66 = $4.606.969** | **US$ 8.959,58 = $8.382.314** |
+| Ad valorem 6 % | US$ 308,93 = **$276.427** | US$ 537,57 = **$502.934** |
+| IVA importación 19 % | US$ 1.036,93 = $927.835 | US$ 1.804,46 = $1.688.199 |
+| Giro pagado a Tesorería | $1.204.262 (18-06-2026) | $2.191.133 (12-08-2026) |
+| Agente · honorarios | $71.506 | $71.649 |
+| Agente · gastos de despacho | $40.788 | $40.849 |
+| Agente · neto / IVA / total | $112.294 / $21.336 / $133.630 | $112.498 / $21.375 / $133.873 |
+| UPS · «cargo terminal» | US$ 136,90 = $122.497 neto + IVA $23.274 = $145.771 | US$ 161,20 = $150.814 neto + IVA $28.655 = $179.469 |
+| Total liquidación del agente (giro + UPS + su factura) | $1.483.663 | $2.504.475 |
+| Provisión que adelantó el dueño / saldo a favor | $1.461.670 / $21.993 | $2.471.970 / $32.505 |
+
+Lo que se aprende de los dos casos:
+
+- **El agente cobra casi lo mismo sin importar el monto**: ≈ $112.400 netos por despacho (honorarios ≈ $71.500 + gastos ≈ $40.800; varía unos pesos, seguramente está en UF). Es un costo **fijo por importación**, no un porcentaje.
+- **UPS cobra un «cargo terminal»** por la carga aérea (US$ 137 por 57 kg, US$ 161 por 132 kg: una parte fija y otra por peso). No cobra flete porque lo pagó Coqui.
+- **La factura del agente incluye «pagos a terceros»** (el giro de Aduana y la factura de UPS que él pagó con la provisión). Esos montos **no son gasto del agente**: el ad valorem y el IVA salen de la DIN y el cargo terminal sale de la factura de UPS. Contabilizar la factura del agente por su «total liquidación» duplicaría todo.
+- **La DIN reparte el CIF por ítem** (con el código de Coqui como nombre del ítem: `BAN2850164` CIF 2.812,93, 36 unidades a US$ 71,86 FOB; `FAB2602` 848,02; `FAB2601` 587,75; `FAB2513` 899,96) y calcula arancel e IVA por ítem. Es exactamente el prorrateo por monto que hoy hace `convertirLineasAClp`.
+
+### 3.2 Envío chico por courier, sin agente (factura UPS 1131950, 07-09-2026)
+
+| Concepto | USD | CLP (t/c 925,25) | ¿Costo? |
+|---|---|---|---|
+| «Declaración de importación» (ad valorem + IVA que UPS pagó por la tienda, «no facturable») | 162,56 | 150.409 | ad valorem sí; IVA no |
+| «Manejo» (gestión aduanera de UPS, afecto) | 72,45 | 67.034 | sí |
+| IVA sobre el manejo | | 12.737 | no (crédito) |
+| Total a cobrar por UPS | | **230.180** | |
+
+Por peso (7,7 kg) y fecha (envío UPS 6R5A37NRYZD, 07-09-2026) casi seguro es el invoice 097440 de Coqui (US$ 685,21, 01-09-2026), aunque la factura de UPS no lo dice. UPS **no desglosa** cuánto de los US$ 162,56 es arancel y cuánto IVA; hay que pedirle la DIN simplificada (sale a nombre de la tienda) para recuperar el IVA. Si Aduana valoró la mercancía en ≈ US$ 622 (162,56 ÷ 26,14 %), serían ≈ US$ 37 de arancel ($34.500) y ≈ US$ 125 de IVA ($115.900).
 
 ## 4. Qué es costo y qué es crédito fiscal (esto cambia el costo unitario)
 
 La tienda es contribuyente de IVA (emite boletas con IVA), así que:
 
-- **El IVA de importación es crédito fiscal**, igual que el IVA de una factura chilena: Ley del IVA art. 23, «el pagado por la importación de las especies al territorio nacional». Se recupera en el F29 con la **DIN** como documento (código 914 en el registro de compras); no va a la factura del agente ni a la de UPS.
-- **El ad valorem NO se recupera**: es costo. Lo mismo el flete, el seguro, los honorarios del agente y los servicios de UPS (netos).
-- El IVA que UPS y el agente cobran sobre sus servicios también es crédito fiscal (facturas afectas).
+- **El IVA de importación es crédito fiscal**, igual que el IVA de una factura chilena: Ley del IVA art. 23, «el pagado por la importación de las especies al territorio nacional». Se recupera en el F29 con la **DIN** como documento (código 914 en el registro de compras). El IVA que UPS y el agente cobran sobre sus servicios también es crédito (facturas afectas).
+- **El ad valorem NO se recupera**: es costo. Lo mismo el flete, el seguro, los honorarios y gastos del agente y el cargo terminal o manejo de UPS (netos).
 
-**Costo puesto en la tienda de una importación** (lo que debería llevar cada unidad):
+**Costo puesto en la tienda de una importación**:
 
 ```
-costo = FOB + flete + seguro (real o 2 % presunto)   ← CIF
-      + ad valorem (6 % del CIF, o 0 % con origen preferente)
-      + honorarios y gastos del agente (netos)
-      + gestión aduanera y adelanto de impuestos de UPS (netos)
+costo = FOB + flete + seguro (2 % presunto)          ← CIF
+      + ad valorem (6 % del CIF)                     ← de la DIN, en pesos
+      + honorarios y gastos del agente (netos)       ← fijo, ≈ $112.400
+      + cargo terminal / manejo de UPS (neto)
 ```
 
 y **fuera del costo**: IVA de importación e IVA de los servicios.
 
 **Consecuencia para D-E6-1** (11-SDD §5.3, «costo unitario con IVA e impuestos específicos»): para el margen da lo mismo, porque el precio de venta también lleva IVA y el 19 % se cancela; pero **el costo contable real es sin IVA**. Recomendación: guardar en la compra **ambos** (neto y bruto) como ya se hace por línea, mostrar el margen sobre bruto como hoy, y que la Fase 3 (margen) reporte también sobre neto para el contador. En las importaciones el IVA no debe entrar a `gastosExtra` (hoy es un solo número y el dueño podría sumarlo por error).
 
-## 5. Ejemplo con el invoice 097440 de Coqui (11-09-2026)
+## 5. Las dos importaciones reales, cerradas: costo puesto en la tienda vs. desembolso
 
-Supuestos: sin certificado de origen (arancel 6 %), sin póliza (seguro presunto 2 %), tipo de cambio de referencia $950; los cargos de UPS/agente son estimaciones hasta ver sus facturas.
+| | Junio 2026 | Agosto 2026 |
+|---|---|---|
+| FOB en pesos (al dólar aduanero) | $4.236.974 | $7.617.673 |
+| CIF en pesos | $4.606.969 | $8.382.314 |
+| + ad valorem | $276.427 | $502.934 |
+| + agente neto | $112.294 | $112.498 |
+| + UPS neto | $122.497 | $150.814 |
+| **= Costo puesto en la tienda** | **$5.118.187** | **$9.148.560** |
+| IVA recuperable (importación + agente + UPS) | $972.445 | $1.738.229 |
+| **Desembolso total** | **$6.090.632** | **$10.886.789** |
+| Costos sobre el CIF (arancel + servicios) | **11,1 %** | **9,1 %** |
+| Costo puesto en la tienda sobre el FOB | **+20,8 %** | **+20,1 %** |
 
-| Concepto | USD | CLP (× 950) | ¿Costo? |
-|---|---|---|---|
-| Mercancía (Sales Total) | 528,50 | 502.075 | sí |
-| Envío (Shipping & Handling, en el invoice) | 156,71 | 148.875 | sí |
-| Seguro presunto 2 % del FOB | 10,57 | 10.042 | sí |
-| **CIF** | **695,78** | **660.991** | |
-| Ad valorem 6 % del CIF | 41,75 | 39.659 | sí |
-| IVA 19 % sobre (CIF + ad valorem) = 737,53 | 140,13 | 133.124 | **no** (crédito fiscal) |
-| Gestión aduanera UPS (estimado) | ≈ 25 | ≈ 24.000 | sí |
-| Adelanto de impuestos UPS (≈ 2–3 % de 181,88, con mínimo) | ≈ 5 | ≈ 5.000 | sí |
-| IVA de los servicios de UPS | | ≈ 5.500 | **no** |
-| **Costo puesto en la tienda** | | **≈ 739.700** | |
-| **Desembolso total** (incluye los IVA que se recuperan) | | **≈ 878.300** | |
+Regla práctica para el dueño mientras C12b no exista: **el costo real de lo que compra a Coqui es el precio FOB más un 20 %** (flete ≈ 7–8 %, seguro 2 %, arancel ≈ 6,5 % del FOB, agente + UPS ≈ 3–5 % según el tamaño del pedido). El desembolso es un 19 % más que eso, pero ese IVA vuelve en el F29. Como el agente y el cargo terminal son casi fijos, **un pedido más grande los diluye** (5 % del CIF en junio, 3 % en agosto).
 
-Los kits gratis (6 de 9 líneas) no cargan nada: el costo se reparte entre las líneas con monto. Con estos supuestos, el display de Digimon (US$ 273 de mercancía, 4 displays × 24 sobres = 96 sobres) queda en ≈ $3.980 por sobre; con arancel 0 % bajaría ≈ $210.
+Con la compra de junio: el ítem `BAN2850164` (36 unidades, CIF US$ 2.812,93 = $2.516.982) carga 6 % de arancel ($151.019) y su parte de agente + UPS (2.812,93 ÷ 5.148,66 = 54,6 % de $234.791 = $128.276): costo puesto en la tienda $2.796.278 → **$77.674 por unidad**, contra US$ 71,86 × 894,79 = $64.302 de FOB.
 
 ## 6. Tratado con Estados Unidos: cuándo el arancel es 0 %
 
-El TLC Chile–EE. UU. deja en 0 % el ad valorem **solo para mercancía originaria de Estados Unidos** (fabricada o transformada allí, según las reglas de origen del capítulo 4) y con certificación de origen del exportador. Lo que Coqui vende (Bandai, Wizards, Ultimate Guard) se fabrica en Japón, China o Europa: **al reexportarse desde EE. UU. no califica** y paga el 6 %. Chile tiene acuerdo con Japón, pero exige embarque directo desde Japón, que no es el caso. En la práctica, para estas compras el arancel es 6 % salvo que el proveedor emita certificación de origen estadounidense.
+El TLC Chile–EE. UU. deja en 0 % el ad valorem **solo para mercancía originaria de Estados Unidos** y con certificación de origen del exportador. Lo que Coqui vende (Bandai, Wizards, Ultimate Guard) se fabrica en Japón, China o Europa: la DIN real dice **país de origen Japón, país de adquisición EE. UU., acuerdo comercial «0»**, y cobró el 6 %. Chile tiene acuerdo con Japón, pero exige embarque directo desde Japón, que no es el caso. En la práctica, para estas compras el arancel es 6 % salvo que el proveedor emita certificación de origen estadounidense para lo que sí sea de allá.
 
 ## 7. Propuesta para el sistema (E6 Fase 2 · C12b «Costos de importación») — agendada
 
-Hoy una compra en USD pide **tipo de cambio** y un único **`gastosExtra` en CLP** que se reparte por monto (11-SDD §6.6). Sirve, pero deja el cálculo de §4 en la cabeza del dueño y no distingue lo que es crédito fiscal. Propuesta:
+Hoy una compra en USD pide **tipo de cambio** y un único **`gastosExtra` en CLP** que se reparte por monto (11-SDD §6.6). Sirve, pero deja el cálculo de §4 en la cabeza del dueño, no distingue lo que es crédito fiscal y no deja rastro de la DIN. Con los documentos reales la propuesta queda así:
 
-1. **Sección «Importación» en la compra** (solo si `moneda ≠ CLP`), con campos separados y en su moneda:
-   - FOB (del documento) · flete internacional (del documento o de la factura del courier) · seguro (real o «2 % presunto», por defecto) → **CIF** calculado.
-   - Arancel: 6 % por defecto; 0 % si «con certificado de origen».
-   - Tipo de cambio: **dólar aduanero de la DIN** (no el de la compra), con el de la compra como sugerencia.
-   - Gastos de agente y de courier **netos**, en CLP, con su detalle (honorarios, gestión aduanera, adelanto de impuestos, otros).
-   - IVA de importación: **calculado y mostrado, marcado «crédito fiscal, no entra al costo»**, con el número de DIN para el contador.
-2. **Costo por línea** = reparto de (CIF + arancel + gastos netos) por monto FOB de cada línea, como hoy hace `convertirLineasAClp` con `gastosExtra`. `CompraLinea.neto` = ese costo; `impuestos` = 0; `total` = neto (sin IVA). D-E6-1 se reescribe: «costo unitario = costo puesto en la tienda sin IVA recuperable; los impuestos no recuperables (ad valorem, ILA) sí van».
-3. **Documentos anexos**: la compra guarda referencias a la factura del courier, la del agente y la DIN (número, fecha, monto), y su suma se compara con el desembolso total.
-4. **Lectores nuevos** para la factura de UPS y la del agente cuando lleguen sus PDF (mismo patrón de `lectores/`).
+1. **Sección «Importación» en la compra** (solo si `moneda ≠ CLP`), dos caminos:
+   - **Con DIN** (agente): se **sube el PDF de la DIN** y un lector nuevo (`lectores/din.ts`, la DIN sí trae texto) saca número, fecha de aceptación, dólar aduanero, FOB, flete, seguro, CIF, ad valorem e IVA en USD y en pesos, y los ítems con su código de proveedor. Se cuadra contra la compra: Σ FOB de las líneas = FOB de la DIN (aviso si no).
+   - **Sin DIN** (courier): se digitan los dos montos de la factura de UPS («declaración de importación» y «manejo»); el sistema estima el reparto arancel/IVA con la fórmula y lo marca «estimado hasta tener la DIN simplificada».
+2. **Gastos de la importación** en una tabla `CompraGasto {compraId, tipo, descripcion, montoNeto, iva, documento, fecha}` con `tipo` en `arancel | agente | courier | otro`. Las facturas del agente son escaneadas (sin texto) → se digitan 4 números (honorarios, gastos, IVA, total); la de UPS por courier sí se puede leer. El **IVA de importación** se guarda aparte en la compra (`ivaImportacion`, `dinNumero`, `dinFecha`) marcado «crédito fiscal, no entra al costo», para el contador.
+3. **Costo por línea** = reparto de (CIF + arancel + gastos netos) por monto FOB de cada línea, como hoy hace `convertirLineasAClp` con `gastosExtra`. `CompraLinea.neto` = ese costo; `impuestos` = 0; `total` = neto (sin IVA). **D-E6-1 se reescribe:** «costo unitario = costo puesto en la tienda sin IVA recuperable; los impuestos no recuperables (ad valorem, ILA) sí van». El tipo de cambio de la mercancía es el que **pagó el dueño** (banco/tarjeta); los impuestos entran en pesos tal como los giró Aduana.
+4. **Tarjetas del detalle:** «Costo puesto en la tienda», «IVA a recuperar», «Desembolso», «% sobre FOB», para que el dueño vea el 20 % de §5 sin calcular.
 
-Alcance estimado: una migración (`Compra.fob/flete/seguro/cif/arancelPct/arancel/ivaImportacion/dinNumero/dinFecha` + tabla `CompraGasto {compraId, tipo, descripcion, montoNeto, iva, documento}`), reglas puras en `dominio/compra.ts` (`calcularImportacion`), una pantalla más en el flujo por pasos (paso «Importación» entre Moneda y Proveedor) y ajustes en `POST /compras/leer` y `POST /compras`. Queda como C12b en 11-SDD §3.
+Alcance estimado: una migración (`Compra.fob/flete/seguro/cif/arancelPct/arancel/ivaImportacion/tipoCambioAduana/dinNumero/dinFecha` + tabla `CompraGasto`), reglas puras en `dominio/compra.ts` (`calcularImportacion`, `repartirCostoImportacion`), lector `din` con fixture real de `127395-5.pdf` (y opcionalmente `ups` con `1131950`), un paso «Importación» en el flujo por pasos entre Moneda y Proveedor, y ajustes en `POST /compras/leer` y `POST /compras`. Queda como C12b en 11-SDD §3.
 
 ## 8. Dudas para el contador (antes de construir)
 
-- Confirmar que la tienda recupera el IVA de importación con la DIN y que el contador quiere el costo de inventario **neto** (§4).
-- Si UPS despacha como «envío expreso» bajo US$ 1.000, qué documento entrega para el crédito fiscal (DIN simplificada) y a nombre de quién sale.
-- Si conviene contratar seguro real (la póliza suele costar menos que el 2 % presunto) y si el proveedor puede facturar CIF.
-- Si Coqui puede emitir certificación de origen para lo que sí sea estadounidense.
+- Confirmar que la tienda está recuperando el IVA de importación con la DIN (código 914) y que quiere el costo de inventario **neto** (§4). En las dos importaciones son $2,6 millones de IVA entre las dos.
+- Para el envío por courier (§3.2): pedir a UPS la DIN simplificada del envío 6R5A37NRYZD, sin ella no hay documento para el crédito fiscal de esos ≈ $116.000.
+- Si conviene contratar seguro real (una póliza suele costar menos que el 2 % presunto: US$ 163 en agosto) y si Coqui puede facturar CIF.
+- Si Coqui puede emitir certificación de origen para lo que sí sea estadounidense (arancel 0 %).

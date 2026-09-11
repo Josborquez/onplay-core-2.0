@@ -53,7 +53,7 @@ Esta etapa hace que **la factura sea la unidad de trabajo**: se carga el documen
 | C10 | Más lectores (un archivo + un test por distribuidor) | continuo | — |
 | C11 | Dividir una línea del documento en varios productos (facturas que consolidan variantes, como la de Nico) | P1 | 2 |
 | C12 | Documentos en moneda extranjera: tipo de cambio + gastos de importación → costo en CLP; margen y precio sugerido al vincular | P0 | 1 |
-| C12b | Costos de importación desglosados (CIF, ad valorem, dólar aduanero, gastos netos de courier y agente; IVA de importación como crédito fiscal, fuera del costo) — ver `docs/13-importaciones-costo-chile.md` | P1 | 2 |
+| C12b | Costos de importación desglosados (lector de la DIN, tabla `CompraGasto` con arancel/agente/courier, IVA de importación como crédito fiscal fuera del costo, tarjetas costo puesto en la tienda / IVA a recuperar / desembolso) — diseño con documentos reales en `docs/13-importaciones-costo-chile.md` §7 | P1 | 2 |
 
 ## 4. Principios de esta etapa
 
