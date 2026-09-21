@@ -48,6 +48,7 @@
 | R-031 | 2026-09-11 | Etapa 6 / Importaciones | El dueño confirma que el contador recupera el IVA de importación y pide construir C12b | Hecho y **en producción el 2026-09-11** (staging 18:01 UTC, producción 18:05 UTC, migración `e6_importacion` aplicada sola): DIN leída del PDF, gastos con documento, IVA aparte como crédito fiscal, tarjetas de costo puesto en la tienda / IVA a recuperar / desembolso |
 | R-030 | 2026-09-11 | Etapa 6 / Importaciones | El dueño pide calcular el costo de importación (CIF, ad valorem 6 %, IVA 19 %) al cargar una factura extranjera; desconoce el detalle | Agendado (E6 Fase 2, C12b) — recopilación y propuesta en `docs/13-importaciones-costo-chile.md`, confirmada con dos importaciones reales (DIN + agente + UPS) y un envío por courier de `docs/pdf/INTERNACIONAL/` |
 | R-032 | 2026-09-21 | Acceso (V0 Entrar) | No había forma de recuperar la contraseña sin el administrador | En staging desde el 2026-09-21 (build `01a0c536…`, zip); falta probar el correo real y llevarlo a producción |
+| R-033 | 2026-09-21 | Dependencias (reporte de vulnerabilidades de Hostinger) | `fast-jwt` 5.0.6 con tres CVE críticas (auth), `nodemailer` 7 con dos altas, vitest/vite/esbuild de desarrollo | Corregido en local |
 
 ---
 
@@ -375,6 +376,13 @@
 - **Verificación (local):** misma respuesta y tiempo para correo existente, inexistente e inactivo; correo real capturado con un receptor SMTP local (asunto, texto y HTML con el enlace); clave corta 400, token malo 422, uso correcto 200 y login con la nueva, reuso 422, topes por usuario e IP; flujo completo en Chrome.
 - **Límite conocido:** los refresh tokens emitidos antes del restablecimiento siguen vigentes hasta vencer (no hay revocación por sesión; desactivar al usuario sí los corta).
 - **Para staging/producción:** crear una casilla del dominio (p. ej. `no-responder@onplaygames.cl`) y poner en el panel `SMTP_HOST=smtp.hostinger.com`, `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (opcional) y `URL_PUBLICA=https://core-staging.onplaygames.cl` (en producción, la suya).
+
+### R-033 · Dependencias vulnerables (reporte de Hostinger)
+
+- **Fecha:** 2026-09-21. **Origen:** el dueño pega el reporte de vulnerabilidades del panel. **Estado:** Corregido en local.
+- **Runtime (lo que importa):** `@fastify/jwt` 9.1 → **10.2.2** (arrastra `fast-jwt` 5.0.6 → 6.3.3: CVE-2026-44351 secreto HMAC vacío, CVE-2026-35039 confusión de caché, CVE-2026-34950 confusión de algoritmo); `nodemailer` 7.0.13 → **9.1.1** (GHSA-2x7j-588g-ccc2, CVE-2026-82659, GHSA-wmmp-3585-3rmp). Sin cambios de código.
+- **Desarrollo/build:** `vitest` 2.1.9 → 3.2.7, `vite` 5.4 → 6.4.3, `esbuild` 0.24 → 0.28.2. Queda `esbuild` 0.25 dentro de vite 6 (el aviso GHSA-gv7w-rqvm-qjhr fue retirado) y un aviso moderado de `@vitest/mocker` (solo tests, requiere vitest 5).
+- **Verificación:** `npm audit --omit=dev` = 0; 179 tests y build limpios; contra `dist/servidor.mjs`: login 200, `/auth/yo` con token 200, sin token / token alterado / `alg:none` → 401, refresh por cookie 200, vendedor a `/admin` 403; correo de recuperación enviado al receptor SMTP local.
 
 ---
 
