@@ -72,6 +72,21 @@ export async function iniciarSesion(email: string, password: string): Promise<Us
   return cuerpo.usuario as unknown as Usuario;
 }
 
+/** R-032: endpoints públicos de recuperación de contraseña (sin token). */
+async function publico<T>(ruta: string, cuerpo?: unknown): Promise<T> {
+  const r = await fetch(`/api/v1${ruta}`, {
+    method: cuerpo === undefined ? 'GET' : 'POST',
+    ...(cuerpo === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) }),
+  });
+  const datos = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok) throw new ErrorApi(r.status, String(datos.error ?? 'ERROR'), datos);
+  return datos as T;
+}
+
+export const recuperacionDisponible = () => publico<{ disponible: boolean }>('/auth/recuperar');
+export const pedirRecuperacion = (email: string) => publico<{ ok: true }>('/auth/recuperar', { email });
+export const restablecerClave = (token: string, nueva: string) => publico<{ ok: true }>('/auth/restablecer', { token, nueva });
+
 /** Intenta recuperar la sesión desde la cookie al cargar la aplicación. */
 export async function reanudarSesion(): Promise<Usuario | null> {
   const token = await asegurarToken();

@@ -235,6 +235,23 @@ model Usuario {
   corridas               SyncCorrida[] // E3
   compras                Compra[]             @relation("ComprasRegistradas") // E6
   comprasRecibidas       Compra[]             @relation("ComprasRecibidas") // E6
+  recuperacionesClave    RecuperacionClave[] // R-032
+}
+
+// R-032: «¿Olvidaste tu contraseña?». Enlace de un solo uso enviado por correo. Solo se guarda el
+// SHA-256 del token (el token en claro vive únicamente en el correo). Nada se borra (P9):
+// usar el enlace, o restablecer con otro, marca `usadoEn`.
+model RecuperacionClave {
+  id        String    @id @default(cuid())
+  usuarioId String
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id])
+  tokenHash String    @unique @db.Char(64)
+  expiraEn  DateTime
+  usadoEn   DateTime?
+  ip        String?
+  creadoEn  DateTime  @default(now())
+
+  @@index([usuarioId, creadoEn])
 }
 
 model TurnoCaja {

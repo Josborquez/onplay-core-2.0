@@ -11,6 +11,7 @@ import { RequiereRol } from './components/RequiereRol.js';
 import { Cargando } from './components/base.js';
 import { Cliente } from './pantallas/Cliente.js';
 import { CambiarClave } from './pantallas/CambiarClave.js';
+import { Recuperar, Restablecer } from './pantallas/Recuperar.js';
 import { Entrar } from './pantallas/Entrar.js';
 import { MisVentas } from './pantallas/MisVentas.js';
 import { Mostrador } from './pantallas/Mostrador.js';
@@ -122,6 +123,8 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/entrar" element={<Entrar />} />
+          <Route path="/recuperar" element={<Recuperar />} /> {/* R-032 */}
+          <Route path="/restablecer" element={<Restablecer />} /> {/* R-032 */}
           <Route
             path="/"
             element={

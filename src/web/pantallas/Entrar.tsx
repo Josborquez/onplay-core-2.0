@@ -1,7 +1,7 @@
 // V0 — Entrar (05-SDD §7): tarjeta de 380 px, foco en Correo, Enter envía.
 // Nunca se dice cuál de los dos campos falló.
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useSesion } from '../sesion.js';
 import { Banner, Boton, Campo } from '../components/base.js';
 
@@ -11,6 +11,8 @@ export function Entrar() {
   const [password, setPassword] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [fallo, setFallo] = useState(false);
+  const [parametros] = useSearchParams();
+  const restablecida = parametros.get('restablecida') === '1'; // R-032
 
   if (usuario) return <Navigate to="/" replace />;
 
@@ -33,6 +35,11 @@ export function Entrar() {
         {vencida ? (
           <div className="mb-4">
             <Banner tono="alerta">Tu sesión venció. Entra de nuevo.</Banner>
+          </div>
+        ) : null}
+        {restablecida && !fallo ? (
+          <div className="mb-4">
+            <Banner tono="ok">Contraseña cambiada. Entra con la nueva.</Banner>
           </div>
         ) : null}
         {fallo ? (
@@ -68,6 +75,11 @@ export function Entrar() {
             </Boton>
           </div>
         </form>
+        <p className="mt-4 text-center text-sec">
+          <Link to="/recuperar" className="text-lab2 underline underline-offset-2">
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </p>
       </div>
     </div>
   );

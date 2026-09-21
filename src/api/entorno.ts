@@ -40,6 +40,17 @@ export const entorno = {
   syncVentanaIngestaMin: Number(process.env.SYNC_VENTANA_INGESTA_MIN ?? 20),
   alertaDiscrepancias: Number(process.env.ALERTA_DISCREPANCIAS ?? 25),
   alertaCorreo: process.env.ALERTA_CORREO ?? '',
+  // R-032: correo saliente (recuperar contraseña). Sin SMTP_HOST o URL_PUBLICA la función queda
+  // apagada y /entrar indica pedirle la clave al administrador.
+  smtp: {
+    host: process.env.SMTP_HOST ?? '',
+    puerto: Number(process.env.SMTP_PORT ?? 465),
+    usuario: process.env.SMTP_USER ?? '',
+    clave: process.env.SMTP_PASS ?? '',
+    remitente: process.env.SMTP_FROM ?? process.env.SMTP_USER ?? '',
+  },
+  // Base de los enlaces que salen por correo (nunca se toma del Host de la petición).
+  urlPublica: (process.env.URL_PUBLICA ?? '').replace(/\/+$/, ''),
   canales: {
     onplay_cl: {
       url: process.env.WOO_ONPLAY_URL ?? '',
