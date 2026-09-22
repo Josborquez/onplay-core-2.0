@@ -26,6 +26,8 @@ import { Productos } from './pantallas/admin/Productos.js';
 import { Sync } from './pantallas/admin/Sync.js';
 import { SistemaPagina } from './pantallas/admin/SistemaPagina.js';
 import { ReporteVentas } from './pantallas/admin/ReporteVentas.js';
+import { ReporteCanales } from './pantallas/admin/ReporteCanales.js';
+import { InventarioValorizado } from './pantallas/admin/InventarioValorizado.js';
 import { Discrepancias } from './pantallas/admin/Discrepancias.js';
 import { PedidosOnline } from './pantallas/admin/PedidosOnline.js';
 import { TurnosAdmin } from './pantallas/admin/TurnosAdmin.js';
@@ -159,6 +161,8 @@ export function App() {
           <Route path="/admin/ventas" element={admin(<VentasAdmin />)} />
           <Route path="/admin/turnos" element={admin(<TurnosAdmin />)} />
           <Route path="/admin/reportes" element={admin(<ReporteVentas />)} /> {/* R-026 */}
+          <Route path="/admin/reportes/canales" element={admin(<ReporteCanales />)} /> {/* R-036 V28 */}
+          <Route path="/admin/inventario/valor" element={admin(<InventarioValorizado />)} /> {/* R-036 V29 */}
           <Route path="/admin/clientes" element={admin(<Clientes />)} />
           <Route path="/admin/duplicados" element={admin(<Duplicados />)} />
           <Route path="/admin/auditoria" element={admin(<Auditoria />)} />

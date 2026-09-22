@@ -125,6 +125,10 @@ Migración `20260910131454_e6_compras`.
 
 **Black Faerie** (`lectores/blackfaerie.ts`, Accesorios Tcg SpA, RUT 76.648.466-2; se reconoce por RUT o por «blackfaerie»/«accesorios tcg»). Factura electrónica de varias páginas con el código entre corchetes al inicio de la descripción: `[CÓDIGO] DESCRIPCIÓN · CANTIDAD («10,00») · PRECIO UNITARIO · $ · IMPORTE`. **El PRECIO UNITARIO es neto redondeado pero el IMPORTE trae IVA** (10 × 5.143 = 51.430 neto → $61.200): manda el importe (`total`), `neto = importe ÷ 1,19` y el resto de redondeo va a la última línea para que Σ neto = «Total neto» del pie. La descripción larga continúa en la fila siguiente («(100)», «LAGOON») y se une. Sin flete. Cantidades en unidades vendibles (`unidadesPorBulto` 1; «(100)» son las fundas del pack).
 
+### 6.8 Ampliación de alcance: análisis comercial (R-036)
+
+La lectura consolidada de ventas por canal, el margen estimado a costo de referencia y el inventario valorizado viven en `docs/14-SDD-analisis-comercial.md`. Usan `Producto.costoReferencia` tal como lo deja esta etapa (último costo bruto recibido) y congelan ese costo en cada línea vendida. El costo promedio ponderado sigue siendo Fase 2 de E6 y el enum `CostoFuente` ya reserva el valor `promedio`.
+
 ### 6.7 Costos de importación (C12b, `docs/13-importaciones-costo-chile.md`)
 
 Solo para compras con `moneda ≠ CLP` y tipo de cambio. Reglas puras en `dominio/compra.ts`:

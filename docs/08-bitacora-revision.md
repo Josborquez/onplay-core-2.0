@@ -51,6 +51,7 @@
 | R-033 | 2026-09-21 | Dependencias (reporte de vulnerabilidades de Hostinger) | `fast-jwt` 5.0.6 con tres CVE críticas (auth), `nodemailer` 7 con dos altas, vitest/vite/esbuild de desarrollo | Corregido; en staging y producción desde el 2026-09-21 |
 | R-034 | 2026-09-22 | Etapa 6 / Compras | Factura de Black Faerie (Accesorios Tcg SpA) no tenía lector: el importe trae IVA aunque el unitario es neto | En staging desde el 2026-09-22 (build `01a0c95c…`) |
 | R-035 | 2026-09-22 | Backoffice (V6 Alta de snack) | La categoría mostraba el árbol completo; faltaba crear una subcategoría ahí mismo; formulario pegado a la izquierda | Hecho; en staging |
+| R-036 | 2026-09-22 | Análisis comercial (canales, margen, inventario) | El dueño no podía ver cuánto aporta cada canal ni cuánto vale el inventario; el reporte solo sumaba ventas POS por usuario | Construido en local |
 
 ---
 
@@ -400,6 +401,16 @@
 - **Fecha:** 2026-09-22. **Origen:** el dueño en staging (`/admin/snacks`): «en categoría debería solo mostrar las categorías de Snack y un botón de agregar otra categoría, centrar el div». Amplía V6 (05-SDD §7).
 - **Qué se hizo:** `POST /categorias {nombre, padreId}` (encargado; solo bajo una categoría existente —las raíces fijan el tipo y siguen siendo las de la semilla—; slug = slug del padre + nombre; 409 `CATEGORIA_DUPLICADA` si el padre ya tiene una con el mismo nombre sin importar tildes/mayúsculas; Auditoria `crear` entidad `categoria`). V6 (`pantallas/admin/AltaSnack.tsx`): el selector ofrece solo las hijas de `snacks` (la raíz sola si no tiene), botón «+ Nueva categoría» al lado que abre un diálogo, crea la subcategoría, recarga el árbol (`olvidarCategorias()` en `catalogo.ts`) y la deja elegida; el tipo es siempre `snack`; el formulario queda centrado (560 px) con el aviso de Enter como subtítulo.
 - **Verificación:** typecheck, tests y build limpios. La creación por HTTP queda por probar en staging (la MariaDB local está detenida).
+
+### R-036 · Canales de venta y valor del inventario
+
+- **Fecha:** 2026-09-22. **Origen:** prompt del dueño `docs/Prompt-Onplay-Canales-Ventas-Inventario.md`, revisado contra el código antes de construir. Spec propia: `docs/14-SDD-analisis-comercial.md` (amplía el alcance de E6 con una capa de LECTURA; P1 respetado: lo que no entra queda agendado en §10).
+- **Qué se construyó:** migración aditiva `20260922192554_r036_analisis_comercial` (desglose financiero del pedido web —`moneda`, impuestos, envío, descuento— e importes por línea; costo congelado `costoUnitario/costoFuente/costoEn` en `VentaLinea` y `PedidoCanalLinea`; enum `CostoFuente`); dominio `src/dominio/analisis.ts` (`consolidarCanales`, `calcularMargen`, `valorizarInventario`, `variacionPorcentaje`; 15 tests con los criterios del prompt); `src/api/fechas.ts` (única definición de la hora de Chile, ahora compartida con R-026); servicios `src/api/reportes/consolidado.ts` e `inventario.ts`; rutas `GET /reportes/canales`, `/canales/categorias`, `/inventario-valorizado`, `/calidad-datos` y sus CSV (encargado+); `POST /ventas` congela el costo DENTRO de la transacción.
+- **Defecto del origen corregido:** en `sync/pedidos.ts` la rama «cambio sin efecto en el maestro» solo actualizaba marcas, así que un reembolso de **solo dinero** nunca llegaba a los importes. Ahora refresca pedido y líneas sin repetir movimientos de stock.
+- **Decisiones que evitan mentir con los números:** `null` es desconocido y jamás se rellena con cero; un canal sin datos dice «Sin datos suficientes»; el margen por defecto usa solo costos congelados y la estimación a costo de hoy es opt-in y rotulada; los filtros de producto reconstruyen el universo por línea; el envío y los cargos no atribuibles se informan aparte; el stock negativo se muestra como discrepancia y no se esconde.
+- **Verificación:** 15 tests nuevos de dominio; por HTTP contra la base de desarrollo: matriz por canal con datos reales, 403 a vendedor, 422 de rango inválido/invertido/demasiado grande, venta nueva con costo congelado (708) y margen del día 60,67 % con 100 % de cobertura, idempotencia sin duplicar, estimación a costo de hoy sube la cobertura de 2,5 % a 20 % y queda rotulada, y la matriz filtrada por categoría cuadra exacto con la suma de esa categoría (388.614).
+- **Dos filtraciones de costo cerradas de paso:** `GET /productos` devolvía `costoReferencia` a cualquier vendedor y el detalle de venta traía el costo congelado nuevo. Ahora el costo solo sale por `/reportes/*` (verificado: admin lo ve, vendedor no).
+- **Pendiente:** carga histórica analítica de pedidos web (agendada, §10 de la spec 14) y ver un reembolso real de Woo en staging.
 
 ---
 

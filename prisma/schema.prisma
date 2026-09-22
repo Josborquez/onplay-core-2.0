@@ -317,6 +317,10 @@ model VentaLinea {
   precioUnitario Int
   descuentoLinea Int       @default(0)
   totalLinea     Int
+  // R-036 (docs/14 §5): costo congelado al vender. null = desconocido (nunca 0 por defecto).
+  costoUnitario  Int?
+  costoFuente    CostoFuente?
+  costoEn        DateTime?
 
   devolucionLineas DevolucionLinea[] // E2
 
@@ -707,6 +711,11 @@ model PedidoCanal {
   estadoCanal       String
   total             Int
   montoReembolsado  Int       @default(0)
+  // R-036 (docs/14 §4): desglose del origen para conciliar el total. null = el canal no lo entregó.
+  moneda            String    @default("CLP")
+  totalImpuestos    Int?
+  totalEnvio        Int?
+  totalDescuento    Int?
   clienteEmail      String?
   clienteExternoId  Int? // customer_id de Woo; 0 o null = invitado
   clienteId         String? // resuelto vía ClienteCanal (E4)
@@ -734,6 +743,13 @@ model PedidoCanalLinea {
   cantidad         Int
   cantidadDevuelta Int         @default(0)
   precioUnitario   Int
+  // R-036: importes autoritativos de la línea en el canal (con impuestos cuando el canal los separa).
+  totalLinea       Int?
+  impuestoLinea    Int?
+  // Costo conocido AL INGERIR el pedido (docs/14 §5): no es el costo vigente hoy.
+  costoUnitario    Int?
+  costoFuente      CostoFuente?
+  costoEn          DateTime?
   productoId       String?
   producto         Producto?   @relation(fields: [productoId], references: [id])
 
@@ -891,6 +907,13 @@ model CompraGasto {
   creadoEn    DateTime             @default(now())
 
   @@index([compraId])
+}
+
+// R-036 (docs/14 §5): de dónde salió el costo congelado en una línea vendida. `promedio` queda
+// reservado para la Fase 2 de E6 (costo promedio ponderado); hoy solo se escribe `referencia`.
+enum CostoFuente {
+  referencia
+  promedio
 }
 
 enum TipoGastoImportacion {

@@ -2,7 +2,7 @@
 // GET requiere vendedor; alta, edición y fusión, encargado.
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Prisma, TipoProducto } from '@prisma/client';
-import { PREFIJO_POR_TIPO } from '@onplay/dominio';
+import { PREFIJO_POR_TIPO, rolAlcanza, type Rol } from '@onplay/dominio';
 import { prisma } from '../db.js';
 import { adjuntarStock } from '../stock/libro.js';
 import { idsSubarbol } from '../categorias.js';
@@ -57,6 +57,11 @@ export default async function rutasProductos(app: FastifyInstance) {
       pagina?: string;
     };
   }>('/productos', vendedor, async (req) => {
+    // R-036: el costo de compra es información de encargado; a un vendedor se le quita de la
+    // respuesta aunque el listado sea el mismo (docs/14 §8).
+    const veCostos = rolAlcanza(req.user.rol as Rol, 'encargado');
+    const sinCosto = <T extends { costoReferencia?: number | null }>(lista: T[]): T[] =>
+      veCostos ? lista : lista.map(({ costoReferencia: _costo, ...resto }) => resto as T);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50) || 50));
     // R-012: la categoría filtra por SUBÁRBOL (elegir «Cartas» incluye Magic, One Piece…).
     const categoriaIds = req.query.categoriaId ? await idsSubarbol(req.query.categoriaId) : null;
@@ -83,7 +88,7 @@ export default async function rutasProductos(app: FastifyInstance) {
         skip: (pagina - 1) * limit,
         take: limit,
       });
-      return { productos: await adjuntarStock(prisma, productos), total, pagina, porPagina: limit, siguienteCursor: null };
+      return { productos: sinCosto(await adjuntarStock(prisma, productos)), total, pagina, porPagina: limit, siguienteCursor: null };
     }
 
     const productos = await prisma.producto.findMany({
@@ -94,7 +99,7 @@ export default async function rutasProductos(app: FastifyInstance) {
     });
     const hayMas = productos.length > limit;
     if (hayMas) productos.pop();
-    return { productos: await adjuntarStock(prisma, productos), total, siguienteCursor: hayMas ? productos[productos.length - 1]!.id : null };
+    return { productos: sinCosto(await adjuntarStock(prisma, productos)), total, siguienteCursor: hayMas ? productos[productos.length - 1]!.id : null };
   });
 
   // ---------- GET /productos/juegos — valores reales de `juego` (string libre, 02 §4.1) ----------

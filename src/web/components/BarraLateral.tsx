@@ -43,6 +43,7 @@ const GRUPOS: Grupo[] = [
       { a: '/admin/productos', etiqueta: 'Productos', rol: 'encargado' },
       { a: '/admin/snacks', etiqueta: 'Alta de snack', rol: 'encargado' },
       { a: '/admin/stock', etiqueta: 'Stock', rol: 'encargado' },
+      { a: '/admin/inventario/valor', etiqueta: 'Valor del inventario', rol: 'encargado' }, // R-036
       { a: '/admin/recuentos', etiqueta: 'Recuentos', rol: 'encargado' },
       { a: '/admin/duplicados', etiqueta: 'Duplicados', rol: 'encargado' },
     ],
@@ -56,7 +57,9 @@ const GRUPOS: Grupo[] = [
     hijos: [
       { a: '/admin/ventas', etiqueta: 'Ventas', rol: 'encargado' },
       { a: '/admin/turnos', etiqueta: 'Turnos', rol: 'encargado' },
-      { a: '/admin/reportes', etiqueta: 'Reportes', rol: 'encargado' },
+      // `fin` para que «Reportes» no quede activo cuando se está en su hija «Canales de venta».
+      { a: '/admin/reportes', etiqueta: 'Reportes por usuario', rol: 'encargado', fin: true },
+      { a: '/admin/reportes/canales', etiqueta: 'Canales de venta', rol: 'encargado' }, // R-036
     ],
   },
   { id: 'clientes', etiqueta: 'Clientes', icono: 'clientes', rol: 'encargado', a: '/admin/clientes' },

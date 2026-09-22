@@ -90,6 +90,9 @@ export interface LineaPedidoWoo {
   price: number | string; // unitario neto (Woo lo manda con decimales)
   subtotal: string;
   total: string;
+  // R-036: Woo separa el impuesto de la línea; con él se reconstruye el importe con IVA.
+  total_tax?: string;
+  subtotal_tax?: string;
 }
 
 export interface ReembolsoResumenWoo {
@@ -104,6 +107,11 @@ export interface PedidoWoo {
   status: string; // pending | processing | on-hold | completed | cancelled | refunded | failed
   total: string;
   currency: string;
+  // R-036 (docs/14 §4): desglose para conciliar el total del pedido sin repartir nada a mano.
+  total_tax?: string;
+  shipping_total?: string;
+  shipping_tax?: string;
+  discount_total?: string;
   customer_id: number; // 0 = invitado
   billing?: { email?: string; first_name?: string; last_name?: string };
   date_created_gmt: string;

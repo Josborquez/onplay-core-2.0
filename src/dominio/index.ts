@@ -108,3 +108,20 @@ export {
   type DocumentoLeido,
   type ErrorCompra,
 } from './compra.js';
+// R-036 — Análisis comercial e inventario (docs/14)
+export {
+  consolidarCanales,
+  calcularMargen,
+  valorizarInventario,
+  variacionPorcentaje,
+  type OperacionAnalitica,
+  type EstadoOperacion,
+  type FuenteOperacion,
+  type FilaCanal,
+  type ConsolidadoCanales,
+  type LineaAnalitica,
+  type Margen,
+  type ExistenciaAnalitica,
+  type FilaInventario,
+  type ResumenInventario,
+} from './analisis.js';

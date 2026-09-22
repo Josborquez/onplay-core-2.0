@@ -165,6 +165,11 @@ interface LineaResuelta {
   cantidad: number;
   cantidadDevuelta: number;
   precioUnitario: number;
+  /** R-036: importes autoritativos de la línea en el canal (docs/14 §4). null = no vinieron. */
+  totalLinea: number | null;
+  impuestoLinea: number | null;
+  /** Costo conocido AL INGERIR: no es el costo vigente hoy (docs/14 §5). */
+  costoUnitario: number | null;
   productoId: string | null;
   productoSku: string | null;
   controlaStock: boolean;
@@ -177,7 +182,11 @@ async function resolverLineas(canalId: string, pedido: PedidoWoo, reembolsos: Re
   const skus = pedido.line_items.map((l) => l.sku).filter((s) => !!s);
   const vinculos = await prisma.productoCanal.findMany({
     where: { canalId, OR: [{ externoId: { in: ids } }, { externoSku: { in: skus } }] },
-    select: { externoId: true, externoSku: true, producto: { select: { id: true, sku: true, controlaStock: true } } },
+    select: {
+      externoId: true,
+      externoSku: true,
+      producto: { select: { id: true, sku: true, controlaStock: true, costoReferencia: true } },
+    },
   });
   return pedido.line_items.map((l) => {
     const porId =
@@ -192,6 +201,10 @@ async function resolverLineas(canalId: string, pedido: PedidoWoo, reembolsos: Re
       cantidad: l.quantity,
       cantidadDevuelta: devueltas.get(l.id) ?? 0,
       precioUnitario: montoDesdeWoo(l.price),
+      // El total de la línea manda sobre cantidad × precio (el unitario puede venir neto, §4).
+      totalLinea: l.total == null ? null : montoDesdeWoo(l.total) + montoDesdeWoo(l.total_tax),
+      impuestoLinea: l.total_tax == null ? null : montoDesdeWoo(l.total_tax),
+      costoUnitario: p?.costoReferencia ?? null,
       productoId: p?.id ?? null,
       productoSku: p?.sku ?? null,
       controlaStock: p?.controlaStock ?? false,
@@ -219,6 +232,24 @@ function planDeLineas(lineas: LineaResuelta[], pagado: boolean, esNuevo: boolean
     controlaStock: l.controlaStock,
     descuenta: pagado && esNuevo && l.productoId && l.controlaStock ? Math.max(0, l.cantidad - l.cantidadDevuelta) : 0,
   }));
+}
+
+/**
+ * R-036 (docs/14 §4): importes autoritativos del canal. El total del pedido manda; el desglose
+ * se guarda solo si el canal lo entrega (si no, `null` = «desglose no disponible», nunca 0).
+ */
+function financierosDelPedido(pedido: PedidoWoo, reembolsos: ReembolsoWoo[]) {
+  const opcional = (v: string | undefined) => (v == null ? null : montoDesdeWoo(v));
+  const envio = opcional(pedido.shipping_total);
+  const envioImpuesto = opcional(pedido.shipping_tax);
+  return {
+    total: montoDesdeWoo(pedido.total),
+    montoReembolsado: Math.abs(reembolsos.reduce((s, r) => s + montoDesdeWoo(r.amount), 0)),
+    moneda: pedido.currency || 'CLP',
+    totalImpuestos: opcional(pedido.total_tax),
+    totalEnvio: envio === null ? null : envio + (envioImpuesto ?? 0),
+    totalDescuento: opcional(pedido.discount_total),
+  };
 }
 
 /** §8.2 — un pedido, una transacción. En simulación solo calcula el plan. */
@@ -278,12 +309,22 @@ async function procesarPedido(ctx: Contexto, pedido: PedidoWoo, reembolsos: Reem
   };
   if (ctx.dryRun) return item;
   if (!esNuevo && candidatas.length === 0 && existente) {
-    // Cambió algo que no nos importa (nota, envío…): solo se actualiza la marca de revisión.
-    await prisma.pedidoCanal.update({
-      where: { id: existente.id },
-      data: { estadoCanal: pedido.status, modificadoEnCanal: modificado, revisadoEn: new Date() },
+    // Cambió algo que no mueve stock (nota, dirección) o SOLO dinero: un reembolso sin unidades
+    // igual debe actualizar los importes del reporte (R-036, docs/14 §4). Se refrescan los datos
+    // financieros y las marcas; nunca se repite un movimiento de stock ni una reposición.
+    await prisma.$transaction(async (tx) => {
+      await tx.pedidoCanal.update({
+        where: { id: existente.id },
+        data: { estadoCanal: pedido.status, modificadoEnCanal: modificado, revisadoEn: new Date(), ...financierosDelPedido(pedido, reembolsos) },
+      });
+      for (const l of lineas) {
+        await tx.pedidoCanalLinea.updateMany({
+          where: { pedidoId: existente.id, externoItemId: l.externoItemId },
+          data: { totalLinea: l.totalLinea, impuestoLinea: l.impuestoLinea, precioUnitario: l.precioUnitario },
+        });
+      }
     });
-    return { ...item, accion: 'omitir', motivo: 'cambio sin efecto en el maestro' };
+    return { ...item, accion: 'omitir', motivo: 'cambio sin efecto en el stock: solo se actualizaron los importes' };
   }
 
   await prisma.$transaction(async (tx) => {
@@ -291,8 +332,7 @@ async function procesarPedido(ctx: Contexto, pedido: PedidoWoo, reembolsos: Reem
     const datosPedido = {
       numero: pedido.number,
       estadoCanal: pedido.status,
-      total: montoDesdeWoo(pedido.total),
-      montoReembolsado: Math.abs(reembolsos.reduce((s, r) => s + montoDesdeWoo(r.amount), 0)),
+      ...financierosDelPedido(pedido, reembolsos),
       clienteEmail: pedido.billing?.email || null,
       clienteExternoId: pedido.customer_id > 0 ? pedido.customer_id : null,
       clienteId,
@@ -319,9 +359,21 @@ async function procesarPedido(ctx: Contexto, pedido: PedidoWoo, reembolsos: Reem
           cantidad: l.cantidad,
           cantidadDevuelta: l.cantidadDevuelta,
           precioUnitario: l.precioUnitario,
+          totalLinea: l.totalLinea,
+          impuestoLinea: l.impuestoLinea,
+          // Costo al ingerir (docs/14 §5); si el producto no tiene costo queda desconocido.
+          costoUnitario: l.costoUnitario,
+          costoFuente: l.costoUnitario === null ? null : 'referencia',
+          costoEn: l.costoUnitario === null ? null : new Date(),
           productoId: l.productoId,
         },
-        update: { cantidadDevuelta: l.cantidadDevuelta, ...(l.productoId ? { productoId: l.productoId } : {}) },
+        update: {
+          cantidadDevuelta: l.cantidadDevuelta,
+          precioUnitario: l.precioUnitario,
+          totalLinea: l.totalLinea,
+          impuestoLinea: l.impuestoLinea,
+          ...(l.productoId ? { productoId: l.productoId } : {}),
+        },
         select: { id: true },
       });
       idsLinea.set(l.externoItemId, fl.id);
@@ -400,13 +452,21 @@ export async function mapearLineaPedido(
   });
   if (!linea) throw new ErrorCorrida({ error: 'LINEA_NO_ENCONTRADA' }, 404);
   if (linea.productoId) throw new ErrorCorrida({ error: 'LINEA_YA_MAPEADA', detalle: `La línea ya apunta al producto ${linea.productoId}` }, 409);
-  const producto = await prisma.producto.findUnique({ where: { id: productoId }, select: { id: true, controlaStock: true, sku: true } });
+  const producto = await prisma.producto.findUnique({ where: { id: productoId }, select: { id: true, controlaStock: true, sku: true, costoReferencia: true } });
   if (!producto) throw new ErrorCorrida({ error: 'PRODUCTO_NO_ENCONTRADO' }, 422);
   const ubicacion = await prisma.ubicacion.findUnique({ where: { codigo: entorno.syncUbicacionOnline } });
   if (!ubicacion) throw new ErrorCorrida({ error: 'UBICACION_ONLINE_NO_CONFIGURADA' }, 409);
 
   return prisma.$transaction(async (tx) => {
-    await tx.pedidoCanalLinea.update({ where: { id: linea.id }, data: { productoId } });
+    // R-036: al vincular se congela el costo conocido en ese momento (docs/14 §5); sin costo
+    // queda desconocido, nunca cero.
+    await tx.pedidoCanalLinea.update({
+      where: { id: linea.id },
+      data: {
+        productoId,
+        ...(producto.costoReferencia === null ? {} : { costoUnitario: producto.costoReferencia, costoFuente: 'referencia' as const, costoEn: new Date() }),
+      },
+    });
     await tx.discrepancia.updateMany({
       where: { pedidoCanalLineaId: linea.id, tipo: 'producto_sin_mapear', estado: 'abierta' },
       data: { estado: 'resuelta', claveAbierta: null, resueltaEn: new Date(), resueltaPorId: usuarioId, accionTomada: `mapear:${producto.sku}` },

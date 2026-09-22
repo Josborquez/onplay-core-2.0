@@ -4,6 +4,7 @@
 // Todo dentro de una única transacción.
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
+import { etiquetaPeriodo, fechaChile, inicioDiaChile, lunesDe, sumarDias } from '../fechas.js';
 import {
   rolAlcanza,
   validarPagoMonedero,
@@ -46,8 +47,21 @@ interface CuerpoVenta {
   pagos?: unknown;
 }
 
+// R-036 (docs/14 §8): la línea se devuelve SIN el costo congelado. El mostrador no lo necesita y
+// un vendedor no debe verlo; el costo vive solo en /reportes/*.
 const incluirDetalle = {
-  lineas: true,
+  lineas: {
+    select: {
+      id: true,
+      ventaId: true,
+      productoId: true,
+      descripcion: true,
+      cantidad: true,
+      precioUnitario: true,
+      descuentoLinea: true,
+      totalLinea: true,
+    },
+  },
   pagos: true,
 } satisfies Prisma.VentaInclude;
 
@@ -253,6 +267,22 @@ export default async function rutasVentas(app: FastifyInstance) {
           UPDATE Correlativo SET ultimo = ${nuevoUltimo}, anio = ${anio} WHERE clave = 'venta'`;
         const folio = `V-${anio}-${String(nuevoUltimo).padStart(5, '0')}`;
 
+        // R-036 (docs/14 §5): costo congelado DENTRO de la misma transacción. Se lee aquí y no
+        // antes para que sea el costo vigente al vender. `null` (producto sin compras, ítem
+        // suelto o servicio) se guarda como desconocido: nunca cero.
+        const idsConCosto = [...new Set(lineas.map((l) => l.productoId).filter((x): x is string => !!x))];
+        const costos = new Map(
+          idsConCosto.length === 0
+            ? []
+            : (
+                await tx.producto.findMany({
+                  where: { id: { in: idsConCosto } },
+                  select: { id: true, costoReferencia: true },
+                })
+              ).map((p) => [p.id, p.costoReferencia]),
+        );
+        const congeladoEn = new Date();
+
         const creada = await tx.venta.create({
           data: {
             folio,
@@ -265,14 +295,20 @@ export default async function rutasVentas(app: FastifyInstance) {
             descuento,
             total: calculo.total,
             lineas: {
-              create: lineas.map((l, i) => ({
-                productoId: l.productoId,
-                descripcion: (l.descripcion ?? '').trim(),
-                cantidad: l.cantidad,
-                precioUnitario: l.precioUnitario,
-                descuentoLinea: l.descuentoLinea ?? 0,
-                totalLinea: calculo.totalesLinea[i]!,
-              })),
+              create: lineas.map((l, i) => {
+                const costoUnitario = l.productoId ? (costos.get(l.productoId) ?? null) : null;
+                return {
+                  productoId: l.productoId,
+                  descripcion: (l.descripcion ?? '').trim(),
+                  cantidad: l.cantidad,
+                  precioUnitario: l.precioUnitario,
+                  descuentoLinea: l.descuentoLinea ?? 0,
+                  totalLinea: calculo.totalesLinea[i]!,
+                  costoUnitario,
+                  costoFuente: costoUnitario === null ? null : ('referencia' as const),
+                  costoEn: costoUnitario === null ? null : congeladoEn,
+                };
+              }),
             },
             pagos: {
               create: pagosCrudos.map((p) => ({
@@ -431,36 +467,8 @@ export default async function rutasVentas(app: FastifyInstance) {
   });
 
   // ─── R-026: ventas por usuario por día / semana / mes (encargado+). Fechas en hora Chile. ───
-  const ZONA = 'America/Santiago';
-  const fechaChile = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: ZONA }); // YYYY-MM-DD
-  /** Instante UTC de las 00:00 de un día calendario de Chile (-03 en verano, -04 en invierno), sin tablas de zona. */
-  const inicioDiaChile = (ymd: string): Date => {
-    const [y, m, d] = ymd.split('-').map(Number) as [number, number, number];
-    for (const off of [3, 4]) {
-      const t = new Date(Date.UTC(y, m - 1, d, off, 0, 0, 0));
-      if (fechaChile(t) === ymd && t.toLocaleTimeString('en-GB', { timeZone: ZONA, hour12: false }).startsWith('00:00')) return t;
-    }
-    return new Date(Date.UTC(y, m - 1, d, 4, 0, 0, 0));
-  };
-  const sumarDias = (ymd: string, n: number): string => {
-    const [y, m, d] = ymd.split('-').map(Number) as [number, number, number];
-    return new Date(Date.UTC(y, m - 1, d + n, 12)).toISOString().slice(0, 10);
-  };
-  const lunesDe = (ymd: string): string => {
-    const [y, m, d] = ymd.split('-').map(Number) as [number, number, number];
-    const t = new Date(Date.UTC(y, m - 1, d, 12));
-    return sumarDias(ymd, -((t.getUTCDay() + 6) % 7));
-  };
-  const etiquetaPeriodo = (agrupar: 'dia' | 'semana' | 'mes', clave: string): string => {
-    if (agrupar === 'mes') {
-      const [y, m] = clave.split('-').map(Number) as [number, number];
-      const nombre = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString('es-CL', { timeZone: 'UTC', month: 'long', year: 'numeric' });
-      return nombre.charAt(0).toUpperCase() + nombre.slice(1);
-    }
-    const [y, m, d] = clave.split('-') as [string, string, string];
-    return agrupar === 'semana' ? `Semana del ${d}-${m}-${y}` : `${d}-${m}-${y}`;
-  };
-
+  // Los ayudantes de zona viven en `src/api/fechas.ts` desde R-036: una sola definición para
+  // este reporte y para los de canales/inventario.
   type Agrupar = 'dia' | 'semana' | 'mes';
   interface FilaResumen {
     periodo: string;

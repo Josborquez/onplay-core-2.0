@@ -1,6 +1,7 @@
 // R-026 — Reportes: ventas por usuario por día, semana o mes (pedido del dueño, 2026-09-10).
 // Solo ventas completadas; las anuladas se cuentan aparte y no suman. Fechas en hora Chile.
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, descargar } from '../../api.js';
 import { Banner, Boton, Campo, Cargando, Segmentado, Vacio } from '../../components/base.js';
 import { clp } from '../../utils/formato.js';
@@ -76,7 +77,12 @@ export function ReporteVentas() {
           </div>
         }
       />
-      <p className="mb-3 text-chico text-lab3">Ventas completadas por usuario. Las anuladas no suman y se cuentan aparte. Fechas en hora de Chile.</p>
+      <p className="mb-3 text-chico text-lab3">
+        Ventas completadas por usuario en el mostrador. Las anuladas no suman y se cuentan aparte. Fechas en hora de Chile.{' '}
+        <Link to="/admin/reportes/canales" className="text-lab2 underline underline-offset-2">
+          Ver ventas por canal (incluye las tiendas web)
+        </Link>
+      </p>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Segmentado<Agrupar>
           opciones={[
