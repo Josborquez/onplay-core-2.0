@@ -49,9 +49,9 @@
 | R-030 | 2026-09-11 | Etapa 6 / Importaciones | El dueño pide calcular el costo de importación (CIF, ad valorem 6 %, IVA 19 %) al cargar una factura extranjera; desconoce el detalle | Agendado (E6 Fase 2, C12b) — recopilación y propuesta en `docs/13-importaciones-costo-chile.md`, confirmada con dos importaciones reales (DIN + agente + UPS) y un envío por courier de `docs/pdf/INTERNACIONAL/` |
 | R-032 | 2026-09-21 | Acceso (V0 Entrar) | No había forma de recuperar la contraseña sin el administrador | En producción desde el 2026-09-21 (build `01a0c561…`); en producción falta poner las variables SMTP (hoy `disponible:false`) |
 | R-033 | 2026-09-21 | Dependencias (reporte de vulnerabilidades de Hostinger) | `fast-jwt` 5.0.6 con tres CVE críticas (auth), `nodemailer` 7 con dos altas, vitest/vite/esbuild de desarrollo | Corregido; en staging y producción desde el 2026-09-21 |
-| R-034 | 2026-09-22 | Etapa 6 / Compras | Factura de Black Faerie (Accesorios Tcg SpA) no tenía lector: el importe trae IVA aunque el unitario es neto | En staging desde el 2026-09-22 (build `01a0c95c…`) |
-| R-035 | 2026-09-22 | Backoffice (V6 Alta de snack) | La categoría mostraba el árbol completo; faltaba crear una subcategoría ahí mismo; formulario pegado a la izquierda | Hecho; en staging |
-| R-036 | 2026-09-22 | Análisis comercial (canales, margen, inventario) | El dueño no podía ver cuánto aporta cada canal ni cuánto vale el inventario; el reporte solo sumaba ventas POS por usuario | En staging desde el 2026-09-22 (build `01a0caa8…`) |
+| R-034 | 2026-09-22 | Etapa 6 / Compras | Factura de Black Faerie (Accesorios Tcg SpA) no tenía lector: el importe trae IVA aunque el unitario es neto | En producción desde el 2026-09-22 |
+| R-035 | 2026-09-22 | Backoffice (V6 Alta de snack) | La categoría mostraba el árbol completo; faltaba crear una subcategoría ahí mismo; formulario pegado a la izquierda | En producción desde el 2026-09-22 |
+| R-036 | 2026-09-22 | Análisis comercial (canales, margen, inventario) | El dueño no podía ver cuánto aporta cada canal ni cuánto vale el inventario; el reporte solo sumaba ventas POS por usuario | En producción desde el 2026-09-22 (build `01a0caac…`) |
 
 ---
 
@@ -411,7 +411,8 @@
 - **Verificación:** 15 tests nuevos de dominio; por HTTP contra la base de desarrollo: matriz por canal con datos reales, 403 a vendedor, 422 de rango inválido/invertido/demasiado grande, venta nueva con costo congelado (708) y margen del día 60,67 % con 100 % de cobertura, idempotencia sin duplicar, estimación a costo de hoy sube la cobertura de 2,5 % a 20 % y queda rotulada, y la matriz filtrada por categoría cuadra exacto con la suma de esa categoría (388.614).
 - **Dos filtraciones de costo cerradas de paso:** `GET /productos` devolvía `costoReferencia` a cualquier vendedor y el detalle de venta traía el costo congelado nuevo. Ahora el costo solo sale por `/reportes/*` (verificado: admin lo ve, vendedor no).
 - **En staging** el 2026-09-22 (build `01a0caa8…`, migración aplicada sola); pantallas V28 «Canales de venta» (/admin/reportes/canales) y V29 «Valor del inventario» (/admin/inventario/valor), revisadas en Chrome con datos de desarrollo.
-- **Pendiente:** carga histórica analítica de pedidos web (agendada, §10 de la spec 14), ver un reembolso real de Woo en staging y llevar todo a producción.
+- **En producción** el 2026-09-22 a las 19:53 UTC (build `01a0caac…`, respaldo previo automático y migración `r036_analisis_comercial` aplicada sola; `/admin/reportes/canales` y `/admin/inventario/valor` responden, la API rechaza sin sesión y el mostrador sigue en pie).
+- **Pendiente:** carga histórica analítica de pedidos web (agendada, §10 de la spec 14) y ver un reembolso real de Woo.
 
 ---
 
