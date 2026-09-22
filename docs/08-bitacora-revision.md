@@ -51,7 +51,7 @@
 | R-033 | 2026-09-21 | Dependencias (reporte de vulnerabilidades de Hostinger) | `fast-jwt` 5.0.6 con tres CVE críticas (auth), `nodemailer` 7 con dos altas, vitest/vite/esbuild de desarrollo | Corregido; en staging y producción desde el 2026-09-21 |
 | R-034 | 2026-09-22 | Etapa 6 / Compras | Factura de Black Faerie (Accesorios Tcg SpA) no tenía lector: el importe trae IVA aunque el unitario es neto | En staging desde el 2026-09-22 (build `01a0c95c…`) |
 | R-035 | 2026-09-22 | Backoffice (V6 Alta de snack) | La categoría mostraba el árbol completo; faltaba crear una subcategoría ahí mismo; formulario pegado a la izquierda | Hecho; en staging |
-| R-036 | 2026-09-22 | Análisis comercial (canales, margen, inventario) | El dueño no podía ver cuánto aporta cada canal ni cuánto vale el inventario; el reporte solo sumaba ventas POS por usuario | Construido en local |
+| R-036 | 2026-09-22 | Análisis comercial (canales, margen, inventario) | El dueño no podía ver cuánto aporta cada canal ni cuánto vale el inventario; el reporte solo sumaba ventas POS por usuario | En staging desde el 2026-09-22 (build `01a0caa8…`) |
 
 ---
 
@@ -410,7 +410,8 @@
 - **Decisiones que evitan mentir con los números:** `null` es desconocido y jamás se rellena con cero; un canal sin datos dice «Sin datos suficientes»; el margen por defecto usa solo costos congelados y la estimación a costo de hoy es opt-in y rotulada; los filtros de producto reconstruyen el universo por línea; el envío y los cargos no atribuibles se informan aparte; el stock negativo se muestra como discrepancia y no se esconde.
 - **Verificación:** 15 tests nuevos de dominio; por HTTP contra la base de desarrollo: matriz por canal con datos reales, 403 a vendedor, 422 de rango inválido/invertido/demasiado grande, venta nueva con costo congelado (708) y margen del día 60,67 % con 100 % de cobertura, idempotencia sin duplicar, estimación a costo de hoy sube la cobertura de 2,5 % a 20 % y queda rotulada, y la matriz filtrada por categoría cuadra exacto con la suma de esa categoría (388.614).
 - **Dos filtraciones de costo cerradas de paso:** `GET /productos` devolvía `costoReferencia` a cualquier vendedor y el detalle de venta traía el costo congelado nuevo. Ahora el costo solo sale por `/reportes/*` (verificado: admin lo ve, vendedor no).
-- **Pendiente:** carga histórica analítica de pedidos web (agendada, §10 de la spec 14) y ver un reembolso real de Woo en staging.
+- **En staging** el 2026-09-22 (build `01a0caa8…`, migración aplicada sola); pantallas V28 «Canales de venta» (/admin/reportes/canales) y V29 «Valor del inventario» (/admin/inventario/valor), revisadas en Chrome con datos de desarrollo.
+- **Pendiente:** carga histórica analítica de pedidos web (agendada, §10 de la spec 14), ver un reembolso real de Woo en staging y llevar todo a producción.
 
 ---
 
