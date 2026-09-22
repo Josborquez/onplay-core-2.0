@@ -28,3 +28,9 @@ export async function enviarCorreo(para: string, asunto: string, texto: string, 
     html,
   });
 }
+
+/** «EAUTH 535 5.7.8 Error: authentication failed» — código de nodemailer + respuesta del servidor, sin secretos. */
+export function describirErrorSmtp(e: unknown): string {
+  const err = e as { code?: string; responseCode?: number; response?: string; message?: string };
+  return [err.code, err.responseCode, err.response ?? err.message].filter(Boolean).join(' ').slice(0, 300);
+}

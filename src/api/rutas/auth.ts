@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from '../db.js';
 import { entorno } from '../entorno.js';
 import type { SesionJwt } from '../plugins/auth.js';
-import { correoDisponible, enviarCorreo } from '../correo.js';
+import { correoDisponible, describirErrorSmtp, enviarCorreo } from '../correo.js';
 
 function publicoUsuario(u: { id: string; nombre: string; email: string; rol: string; debeCambiarClave?: boolean }) {
   return { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol, debeCambiarClave: u.debeCambiarClave ?? false };
@@ -235,8 +235,9 @@ export default async function rutasAuth(app: FastifyInstance) {
           });
           const { texto, html } = correoRecuperacion(usuario.nombre, `${entorno.urlPublica}/restablecer?token=${token}`);
           // Sin await: el tiempo de respuesta no delata si el correo existe.
-          void enviarCorreo(usuario.email, 'Restablecer tu contraseña · OnPlay Core', texto, html).catch((e) =>
-            req.log.error(e, 'no se pudo enviar el correo de recuperación'),
+          // El motivo va en el mensaje: el visor de logs del panel solo muestra `msg`.
+          void enviarCorreo(usuario.email, 'Restablecer tu contraseña · OnPlay Core', texto, html).catch((e: unknown) =>
+            req.log.error(e, `no se pudo enviar el correo de recuperación: ${describirErrorSmtp(e)}`),
           );
         } else {
           req.log.warn({ usuarioId: usuario.id }, 'recuperación de clave: tope por hora alcanzado');
