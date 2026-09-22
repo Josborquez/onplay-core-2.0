@@ -180,6 +180,11 @@ let arbolCategorias: Categoria[] | null = null;
  * Árbol de categorías. Se pide al servidor y se guarda en IndexedDB (`meta.categorias`)
  * para que los accesos rápidos funcionen sin conexión (P8, R-005).
  */
+/** Olvida el árbol en memoria: la próxima llamada a `categorias()` lo vuelve a pedir (R-035). */
+export function olvidarCategorias() {
+  arbolCategorias = null;
+}
+
 export async function categorias(): Promise<Categoria[]> {
   if (arbolCategorias) return arbolCategorias;
   try {

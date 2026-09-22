@@ -500,6 +500,42 @@ export default async function rutasProductos(app: FastifyInstance) {
     return { categorias: raices };
   });
 
+  // ---------- POST /categorias — subcategoría nueva (R-035, encargado) ----------
+  // Solo bajo una categoría existente: la raíz fija el tipo del producto (TIPO_POR_RAIZ en la web),
+  // así que las raíces siguen siendo las de la semilla. Slug = slug del padre + nombre.
+  app.post<{ Body: { nombre: string; padreId: string } }>(
+    '/categorias',
+    {
+      ...encargado,
+      schema: {
+        body: {
+          type: 'object',
+          required: ['nombre', 'padreId'],
+          properties: { nombre: { type: 'string', minLength: 1, maxLength: 80 }, padreId: { type: 'string', minLength: 1 } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const nombre = req.body.nombre.trim().replace(/\s+/g, ' ');
+      if (!nombre) return reply.code(422).send({ error: 'NOMBRE_REQUERIDO' });
+      const padre = await prisma.categoria.findUnique({ where: { id: req.body.padreId }, include: { hijos: true } });
+      if (!padre) return reply.code(422).send({ error: 'CATEGORIA_PADRE_NO_EXISTE' });
+      const clave = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const repetida = padre.hijos.find((h) => clave(h.nombre) === clave(nombre));
+      if (repetida) return reply.code(409).send({ error: 'CATEGORIA_DUPLICADA', categoria: { id: repetida.id, nombre: repetida.nombre } });
+      const slug = `${padre.slug}-${clave(nombre).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+      if (await prisma.categoria.findUnique({ where: { slug } })) return reply.code(409).send({ error: 'CATEGORIA_DUPLICADA' });
+      const creada = await prisma.$transaction(async (tx) => {
+        const c = await tx.categoria.create({ data: { nombre, slug, padreId: padre.id } });
+        await tx.auditoria.create({
+          data: { usuarioId: req.user.sub, entidad: 'categoria', entidadId: c.id, accion: 'crear', valorNuevo: { nombre, slug, padre: padre.slug } },
+        });
+        return c;
+      });
+      return reply.code(201).send({ categoria: { id: creada.id, nombre: creada.nombre, slug: creada.slug, hijos: [] } });
+    },
+  );
+
   // ---------- GET /auditoria — rastro de cambios (§8), rol encargado ----------
   app.get<{
     Querystring: {

@@ -50,6 +50,7 @@
 | R-032 | 2026-09-21 | Acceso (V0 Entrar) | No había forma de recuperar la contraseña sin el administrador | En producción desde el 2026-09-21 (build `01a0c561…`); en producción falta poner las variables SMTP (hoy `disponible:false`) |
 | R-033 | 2026-09-21 | Dependencias (reporte de vulnerabilidades de Hostinger) | `fast-jwt` 5.0.6 con tres CVE críticas (auth), `nodemailer` 7 con dos altas, vitest/vite/esbuild de desarrollo | Corregido; en staging y producción desde el 2026-09-21 |
 | R-034 | 2026-09-22 | Etapa 6 / Compras | Factura de Black Faerie (Accesorios Tcg SpA) no tenía lector: el importe trae IVA aunque el unitario es neto | En staging desde el 2026-09-22 (build `01a0c95c…`) |
+| R-035 | 2026-09-22 | Backoffice (V6 Alta de snack) | La categoría mostraba el árbol completo; faltaba crear una subcategoría ahí mismo; formulario pegado a la izquierda | Hecho; en staging |
 
 ---
 
@@ -393,6 +394,12 @@
 - **Dato raro del documento:** el PRECIO UNITARIO impreso es neto redondeado, pero el IMPORTE ya incluye IVA (10 × 5.143 = 51.430 → $61.200 = 51.429 × 1,19). Si se tomara el importe como neto el costo quedaría inflado 19 % dos veces. Decisión: manda el importe (es lo que cuadra con el pie); `neto = importe ÷ 1,19`, resto de redondeo a la última línea.
 - **Qué se construyó:** `src/api/compras/lectores/blackfaerie.ts` (+ `blackfaerie.fixture.ts` con las celdas reales de las 4 páginas y `blackfaerie.test.ts`, 5 casos), valor `blackfaerie` al final de `LectorFactura` (migración `20260922120000_e6_lector_blackfaerie`, escrita a mano con las tablas en mayúscula por R-021 porque la MariaDB local estaba detenida), `LECTOR_POR_RUT['76648466-2']`, registro en `lectores/index.ts`, tipo web en `tiposCompras.ts`.
 - **Verificación:** PDF real → `extraerPaginasPdf` → `detectarLector` = `blackfaerie` → 53 líneas, N° 2940, 2026-09-15, neto $1.413.613 + IVA $268.587 = $1.682.200, sin advertencias; descripciones de dos filas unidas («… (100) - LAGOON»); los otros 7 PDF de `docs/pdf` siguen eligiendo su propio lector; 180 tests, typecheck y build limpios. **Pendiente:** cargarla por la pantalla (`/admin/compras/nueva`) contra una base (el test del migrador y la prueba por HTTP quedaron sin correr con la MariaDB local detenida).
+
+### R-035 · Alta de snack: solo categorías de Snacks y «Nueva categoría»
+
+- **Fecha:** 2026-09-22. **Origen:** el dueño en staging (`/admin/snacks`): «en categoría debería solo mostrar las categorías de Snack y un botón de agregar otra categoría, centrar el div». Amplía V6 (05-SDD §7).
+- **Qué se hizo:** `POST /categorias {nombre, padreId}` (encargado; solo bajo una categoría existente —las raíces fijan el tipo y siguen siendo las de la semilla—; slug = slug del padre + nombre; 409 `CATEGORIA_DUPLICADA` si el padre ya tiene una con el mismo nombre sin importar tildes/mayúsculas; Auditoria `crear` entidad `categoria`). V6 (`pantallas/admin/AltaSnack.tsx`): el selector ofrece solo las hijas de `snacks` (la raíz sola si no tiene), botón «+ Nueva categoría» al lado que abre un diálogo, crea la subcategoría, recarga el árbol (`olvidarCategorias()` en `catalogo.ts`) y la deja elegida; el tipo es siempre `snack`; el formulario queda centrado (560 px) con el aviso de Enter como subtítulo.
+- **Verificación:** typecheck, tests y build limpios. La creación por HTTP queda por probar en staging (la MariaDB local está detenida).
 
 ---
 
