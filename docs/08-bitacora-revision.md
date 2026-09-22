@@ -377,7 +377,7 @@
 - **Verificación (local):** misma respuesta y tiempo para correo existente, inexistente e inactivo; correo real capturado con un receptor SMTP local (asunto, texto y HTML con el enlace); clave corta 400, token malo 422, uso correcto 200 y login con la nueva, reuso 422, topes por usuario e IP; flujo completo en Chrome.
 - **Producción (2026-09-21):** build `01a0c561…` desde zip a las 19:11 UTC; arrancó 19:12, migración `r032` aplicada sola (respaldo previo automático), `/auth/recuperar` → `disponible:false` hasta que se pongan `SMTP_*` y `URL_PUBLICA=https://core.onplaygames.cl` en el panel de producción; mientras tanto `/recuperar` indica pedir la clave al administrador. Producción tampoco tiene Git conectado (se despliega por zip).
 - **Límite conocido:** los refresh tokens emitidos antes del restablecimiento siguen vigentes hasta vencer (no hay revocación por sesión; desactivar al usuario sí los corta).
-- **Para staging/producción:** crear una casilla del dominio (p. ej. `no-responder@onplaygames.cl`) y poner en el panel `SMTP_HOST=smtp.hostinger.com`, `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (opcional) y `URL_PUBLICA=https://core-staging.onplaygames.cl` (en producción, la suya).
+- **Para staging/producción:** crear una casilla del dominio (p. ej. `no-responder@onplaygames.cl`) y poner en el panel `SMTP_HOST=smtp.titan.email` (el MX de onplaygames.cl es Titan; con `smtp.hostinger.com` falla con 535 authentication failed), `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (opcional) y `URL_PUBLICA=https://core-staging.onplaygames.cl` (en producción, la suya).
 
 ### R-033 · Dependencias vulnerables (reporte de Hostinger)
 

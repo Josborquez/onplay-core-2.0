@@ -1,4 +1,4 @@
-// R-032: correo saliente por SMTP (Hostinger: smtp.hostinger.com:465 con una casilla del dominio).
+// R-032: correo saliente por SMTP. onplaygames.cl usa Titan (smtp.titan.email:465), no smtp.hostinger.com.
 // Un solo transporte perezoso; sin configuración, `correoDisponible()` es false y nadie envía.
 import nodemailer, { type Transporter } from 'nodemailer';
 import { entorno } from './entorno.js';
