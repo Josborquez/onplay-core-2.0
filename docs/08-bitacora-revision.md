@@ -49,7 +49,7 @@
 | R-030 | 2026-09-11 | Etapa 6 / Importaciones | El dueño pide calcular el costo de importación (CIF, ad valorem 6 %, IVA 19 %) al cargar una factura extranjera; desconoce el detalle | Agendado (E6 Fase 2, C12b) — recopilación y propuesta en `docs/13-importaciones-costo-chile.md`, confirmada con dos importaciones reales (DIN + agente + UPS) y un envío por courier de `docs/pdf/INTERNACIONAL/` |
 | R-032 | 2026-09-21 | Acceso (V0 Entrar) | No había forma de recuperar la contraseña sin el administrador | En producción desde el 2026-09-21 (build `01a0c561…`); en producción falta poner las variables SMTP (hoy `disponible:false`) |
 | R-033 | 2026-09-21 | Dependencias (reporte de vulnerabilidades de Hostinger) | `fast-jwt` 5.0.6 con tres CVE críticas (auth), `nodemailer` 7 con dos altas, vitest/vite/esbuild de desarrollo | Corregido; en staging y producción desde el 2026-09-21 |
-| R-034 | 2026-09-22 | Etapa 6 / Compras | Factura de Black Faerie (Accesorios Tcg SpA) no tenía lector: el importe trae IVA aunque el unitario es neto | Hecho en local |
+| R-034 | 2026-09-22 | Etapa 6 / Compras | Factura de Black Faerie (Accesorios Tcg SpA) no tenía lector: el importe trae IVA aunque el unitario es neto | En staging desde el 2026-09-22 (build `01a0c95c…`) |
 
 ---
 
@@ -388,7 +388,7 @@
 
 ### R-034 · Lector de facturas de Black Faerie
 
-- **Fecha:** 2026-09-22. **Estado:** Hecho en local. **Origen:** el dueño pide implementar la carga de `docs/pdf/N 2940 BLACKFAERIE_CLIENTE_…pdf` (factura electrónica N° 2940 de Accesorios Tcg SpA, RUT 76.648.466-2, 15-09-2026).
+- **Fecha:** 2026-09-22. **Estado:** En staging (build `01a0c95c…` a las 13:44 UTC, migración `e6_lector_blackfaerie` aplicada sola). **Origen:** el dueño pide implementar la carga de `docs/pdf/N 2940 BLACKFAERIE_CLIENTE_…pdf` (factura electrónica N° 2940 de Accesorios Tcg SpA, RUT 76.648.466-2, 15-09-2026).
 - **Dato raro del documento:** el PRECIO UNITARIO impreso es neto redondeado, pero el IMPORTE ya incluye IVA (10 × 5.143 = 51.430 → $61.200 = 51.429 × 1,19). Si se tomara el importe como neto el costo quedaría inflado 19 % dos veces. Decisión: manda el importe (es lo que cuadra con el pie); `neto = importe ÷ 1,19`, resto de redondeo a la última línea.
 - **Qué se construyó:** `src/api/compras/lectores/blackfaerie.ts` (+ `blackfaerie.fixture.ts` con las celdas reales de las 4 páginas y `blackfaerie.test.ts`, 5 casos), valor `blackfaerie` al final de `LectorFactura` (migración `20260922120000_e6_lector_blackfaerie`, escrita a mano con las tablas en mayúscula por R-021 porque la MariaDB local estaba detenida), `LECTOR_POR_RUT['76648466-2']`, registro en `lectores/index.ts`, tipo web en `tiposCompras.ts`.
 - **Verificación:** PDF real → `extraerPaginasPdf` → `detectarLector` = `blackfaerie` → 53 líneas, N° 2940, 2026-09-15, neto $1.413.613 + IVA $268.587 = $1.682.200, sin advertencias; descripciones de dos filas unidas («… (100) - LAGOON»); los otros 7 PDF de `docs/pdf` siguen eligiendo su propio lector; 180 tests, typecheck y build limpios. **Pendiente:** cargarla por la pantalla (`/admin/compras/nueva`) contra una base (el test del migrador y la prueba por HTTP quedaron sin correr con la MariaDB local detenida).
