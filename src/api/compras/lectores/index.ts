@@ -8,6 +8,7 @@ import { leerNicoFactura, reconoceNicoFactura } from './nico_factura.js';
 import { leerCoqui, reconoceCoqui } from './coqui.js';
 import { leerDevir, reconoceDevir } from './devir.js';
 import { leerAsmodee, reconoceAsmodee } from './asmodee.js';
+import { leerBlackfaerie, reconoceBlackfaerie } from './blackfaerie.js';
 import { reconoceDin } from './din.js';
 
 export interface Lector {
@@ -27,6 +28,7 @@ export const LECTORES: readonly Lector[] = [
   { clave: 'coqui', nombre: 'Coqui Hobby (Sales Order en USD)', familia: ['coqui'], reconoce: reconoceCoqui, leer: leerCoqui },
   { clave: 'devir', nombre: 'Devir Chile (factura)', familia: ['devir'], reconoce: reconoceDevir, leer: leerDevir },
   { clave: 'asmodee', nombre: 'Asmodee Chile (factura)', familia: ['asmodee'], reconoce: reconoceAsmodee, leer: leerAsmodee },
+  { clave: 'blackfaerie', nombre: 'Black Faerie (factura)', familia: ['blackfaerie'], reconoce: reconoceBlackfaerie, leer: leerBlackfaerie },
 ];
 
 export function lectorPorClave(clave: string): Lector | null {

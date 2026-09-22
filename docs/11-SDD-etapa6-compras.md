@@ -72,7 +72,7 @@ Migración `20260910131454_e6_compras`.
 
 ### 5.1 Entidades nuevas
 
-**`Proveedor`** — `id`, `nombre`, `rut` (único, normalizado `91144000-8`, nullable), `lector` (enum `LectorFactura`: `manual` · `andina` · `nico` · `nico_factura` · `coqui` · `devir` · `asmodee`), `activo`, `notas`, `creadoEn`. Con RUT, `POST /compras/leer` reconoce al proveedor solo.
+**`Proveedor`** — `id`, `nombre`, `rut` (único, normalizado `91144000-8`, nullable), `lector` (enum `LectorFactura`: `manual` · `andina` · `nico` · `nico_factura` · `coqui` · `devir` · `asmodee` · `blackfaerie`), `activo`, `notas`, `creadoEn`. Con RUT, `POST /compras/leer` reconoce al proveedor solo.
 
 **`ProductoProveedor`** — memoria de vinculación (C4): `proveedorId`, `codigoProveedor` (tal como viene en el documento), `descripcionProveedor` (última vista), `productoId`, `unidadesPorBulto`. Única `(proveedorId, codigoProveedor)`.
 
@@ -122,6 +122,8 @@ Migración `20260910131454_e6_compras`.
 **Devir Chile Limitada** (`lectores/devir.ts`, RUT 76.632.420-7). Factura simple `CANTIDAD · DETALLE · VALOR UNIT. · TOTAL` **sin código de producto** (la memoria de vinculación usa la descripción como clave) y con **coma de miles** («139,122»; se lee con `parsearNumeroUs`). Montos netos; el IVA del pie se reparte por neto. La línea «DSP Despacho» es flete: sale de las líneas y su neto se reparte entre los productos (costo puesto en la tienda). «(Display 30ud)» → 30 unidades por display (regla ampliada en `unidadesPorBultoDesdeDescripcion`). Fixture real de la factura 107327 en `devir.test.ts`. Migración `e6_lector_devir`.
 
 **Asmodee Chile** (`lectores/asmodee.ts`, Importadora y Comercializadora Skyship SPA, RUT 76.353.094-9; se reconoce por RUT o por «asmodee»/«skyship»). Factura electrónica `CÓDIGO · DESCRIPCIÓN · UNID · CANTIDAD · PRECIO UNITARIO · TOTAL` con montos **netos** escritos con «$» y punto de miles; IVA solo en el pie («MONTO IVA 19%», se reparte por neto); «FECHA EMISIÓN : 1/9/2026» sin ceros (`fechaIsoDesdeCl` acepta d/m/aaaa). La línea «LOG01 Envío y Embalaje» es flete: se reparte entre los productos. Cantidades en unidades vendibles (`unidadesPorBulto` 1; «66x91» es la medida de la funda, no un pack). Segunda página = copia, se descarta. Fixture real de la factura 48041 en `asmodee.test.ts`. Migración `e6_lector_asmodee`.
+
+**Black Faerie** (`lectores/blackfaerie.ts`, Accesorios Tcg SpA, RUT 76.648.466-2; se reconoce por RUT o por «blackfaerie»/«accesorios tcg»). Factura electrónica de varias páginas con el código entre corchetes al inicio de la descripción: `[CÓDIGO] DESCRIPCIÓN · CANTIDAD («10,00») · PRECIO UNITARIO · $ · IMPORTE`. **El PRECIO UNITARIO es neto redondeado pero el IMPORTE trae IVA** (10 × 5.143 = 51.430 neto → $61.200): manda el importe (`total`), `neto = importe ÷ 1,19` y el resto de redondeo va a la última línea para que Σ neto = «Total neto» del pie. La descripción larga continúa en la fila siguiente («(100)», «LAGOON») y se une. Sin flete. Cantidades en unidades vendibles (`unidadesPorBulto` 1; «(100)» son las fundas del pack).
 
 ### 6.7 Costos de importación (C12b, `docs/13-importaciones-costo-chile.md`)
 
@@ -188,6 +190,7 @@ En compras `manual` los totales se recalculan con cada cambio de líneas; en `pd
 - **Lector Coqui y moneda extranjera (C12) — 2026-09-10** con la orden 0092856 (`docs/pdf/Sales OrderSO 0092856 (1).pdf`): 37 líneas, US$ 1.398,90; margen y precio sugerido en la pantalla.
 - **Lector Devir y líneas pendientes de una recibida — 2026-09-10** con la factura 107327 (`docs/pdf/Onplay 107327.pdf`): 3 productos + despacho, total $2.384.915.
 - **Lector Asmodee — 2026-09-10** con la factura 48041 (`docs/pdf/Factura de venta_39045.pdf`): 29 productos + envío, total $650.280.
+- **Lector Black Faerie — 2026-09-22** con la factura 2940 (`docs/pdf/N 2940 BLACKFAERIE_CLIENTE_…pdf`): 53 productos en 4 páginas, neto $1.413.613, total $1.682.200, cuadrado sin avisos (R-034).
 - **Fase 1 (C1–C6) — hecha en local el 2026-09-10.** Verificado por HTTP con la factura real: lectura 8 líneas / $177.813 cuadrado, proveedor por RUT con lector automático, borrador, 409 por duplicado, vinculación que aprende (releer trae `aprendida`), 422 sin vincular, recepción (Coca 350: bodega 43 → 91, `costoReferencia` 708; Monster nuevo: 0 → 24 y control encendido), kardex con referencia a la compra, 409 al anular/editar una recibida, compra manual con línea y totales recalculados, anulación de borrador. 16 tests nuevos (147 en total).
 - **Fase 2 — costo promedio ponderado** (C7): `Producto.costoPromedio` recalculado al recibir; `costoReferencia` pasa a ser «último».
 - **Fase 3 — margen** (C8): reporte por producto/categoría/canal sobre `VentaLinea` × costo vigente al vender (congelar `costoUnitario` en la línea de venta desde entonces).

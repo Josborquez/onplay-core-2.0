@@ -1,7 +1,7 @@
 // Reglas puras de compras — docs/11-SDD-etapa6-compras.md §6.
 // Aquí se calcula y se cuadra; leer el PDF y escribir en la base viven en src/api/compras.
 
-export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui' | 'devir' | 'asmodee';
+export type LectorFactura = 'manual' | 'andina' | 'nico' | 'nico_factura' | 'coqui' | 'devir' | 'asmodee' | 'blackfaerie';
 export type Moneda = 'CLP' | 'USD';
 export type TipoDocumentoCompra = 'factura' | 'boleta' | 'guia' | 'otro';
 
@@ -57,6 +57,7 @@ export const LECTOR_POR_RUT: Readonly<Record<string, LectorFactura>> = {
   '10879175-6': 'nico_factura', // Distribuidora Nico (Oscar Fernando Leiva Sanhueza): factura; su pedido web usa `nico`
   '76632420-7': 'devir', // Devir Chile Limitada
   '76353094-9': 'asmodee', // Asmodee Chile (Importadora y Comercializadora Skyship SPA)
+  '76648466-2': 'blackfaerie', // Black Faerie (Accesorios Tcg SpA)
 };
 
 export function lectorPorRut(rutNormalizado: string | null | undefined): LectorFactura | null {

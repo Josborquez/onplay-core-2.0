@@ -757,6 +757,7 @@ enum LectorFactura {
   coqui // Coqui Hobby Distribution (EE. UU.): Sales Order en USD; CLP con tipo de cambio + gastos de importación
   devir // Devir Chile Limitada (RUT 76.632.420-7): factura simple sin código, coma de miles, flete como línea
   asmodee // Asmodee Chile / Skyship SPA (RUT 76.353.094-9): factura con código, montos netos con $, envío como línea
+  blackfaerie // Black Faerie / Accesorios Tcg SpA (RUT 76.648.466-2): [código] en la descripción, importe CON IVA
 }
 
 enum TipoDocumentoCompra {

@@ -49,6 +49,7 @@
 | R-030 | 2026-09-11 | Etapa 6 / Importaciones | El dueño pide calcular el costo de importación (CIF, ad valorem 6 %, IVA 19 %) al cargar una factura extranjera; desconoce el detalle | Agendado (E6 Fase 2, C12b) — recopilación y propuesta en `docs/13-importaciones-costo-chile.md`, confirmada con dos importaciones reales (DIN + agente + UPS) y un envío por courier de `docs/pdf/INTERNACIONAL/` |
 | R-032 | 2026-09-21 | Acceso (V0 Entrar) | No había forma de recuperar la contraseña sin el administrador | En producción desde el 2026-09-21 (build `01a0c561…`); en producción falta poner las variables SMTP (hoy `disponible:false`) |
 | R-033 | 2026-09-21 | Dependencias (reporte de vulnerabilidades de Hostinger) | `fast-jwt` 5.0.6 con tres CVE críticas (auth), `nodemailer` 7 con dos altas, vitest/vite/esbuild de desarrollo | Corregido; en staging y producción desde el 2026-09-21 |
+| R-034 | 2026-09-22 | Etapa 6 / Compras | Factura de Black Faerie (Accesorios Tcg SpA) no tenía lector: el importe trae IVA aunque el unitario es neto | Hecho en local |
 
 ---
 
@@ -384,6 +385,13 @@
 - **Runtime (lo que importa):** `@fastify/jwt` 9.1 → **10.2.2** (arrastra `fast-jwt` 5.0.6 → 6.3.3: CVE-2026-44351 secreto HMAC vacío, CVE-2026-35039 confusión de caché, CVE-2026-34950 confusión de algoritmo); `nodemailer` 7.0.13 → **9.1.1** (GHSA-2x7j-588g-ccc2, CVE-2026-82659, GHSA-wmmp-3585-3rmp). Sin cambios de código.
 - **Desarrollo/build:** `vitest` 2.1.9 → 3.2.7, `vite` 5.4 → 6.4.3, `esbuild` 0.24 → 0.28.2. Queda `esbuild` 0.25 dentro de vite 6 (el aviso GHSA-gv7w-rqvm-qjhr fue retirado) y un aviso moderado de `@vitest/mocker` (solo tests, requiere vitest 5).
 - **Verificación:** `npm audit --omit=dev` = 0; 179 tests y build limpios; contra `dist/servidor.mjs`: login 200, `/auth/yo` con token 200, sin token / token alterado / `alg:none` → 401, refresh por cookie 200, vendedor a `/admin` 403; correo de recuperación enviado al receptor SMTP local.
+
+### R-034 · Lector de facturas de Black Faerie
+
+- **Fecha:** 2026-09-22. **Estado:** Hecho en local. **Origen:** el dueño pide implementar la carga de `docs/pdf/N 2940 BLACKFAERIE_CLIENTE_…pdf` (factura electrónica N° 2940 de Accesorios Tcg SpA, RUT 76.648.466-2, 15-09-2026).
+- **Dato raro del documento:** el PRECIO UNITARIO impreso es neto redondeado, pero el IMPORTE ya incluye IVA (10 × 5.143 = 51.430 → $61.200 = 51.429 × 1,19). Si se tomara el importe como neto el costo quedaría inflado 19 % dos veces. Decisión: manda el importe (es lo que cuadra con el pie); `neto = importe ÷ 1,19`, resto de redondeo a la última línea.
+- **Qué se construyó:** `src/api/compras/lectores/blackfaerie.ts` (+ `blackfaerie.fixture.ts` con las celdas reales de las 4 páginas y `blackfaerie.test.ts`, 5 casos), valor `blackfaerie` al final de `LectorFactura` (migración `20260922120000_e6_lector_blackfaerie`, escrita a mano con las tablas en mayúscula por R-021 porque la MariaDB local estaba detenida), `LECTOR_POR_RUT['76648466-2']`, registro en `lectores/index.ts`, tipo web en `tiposCompras.ts`.
+- **Verificación:** PDF real → `extraerPaginasPdf` → `detectarLector` = `blackfaerie` → 53 líneas, N° 2940, 2026-09-15, neto $1.413.613 + IVA $268.587 = $1.682.200, sin advertencias; descripciones de dos filas unidas («… (100) - LAGOON»); los otros 7 PDF de `docs/pdf` siguen eligiendo su propio lector; 180 tests, typecheck y build limpios. **Pendiente:** cargarla por la pantalla (`/admin/compras/nueva`) contra una base (el test del migrador y la prueba por HTTP quedaron sin correr con la MariaDB local detenida).
 
 ---
 
